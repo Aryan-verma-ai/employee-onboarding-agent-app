@@ -7,15 +7,16 @@ name and version through the Foundry project endpoint. No model is selected at r
 
 ## Provision and run
 
-1. Create an Azure AI Foundry resource/project and deploy a model supporting function tools.
-2. Give the provisioning identity permission to create agents and the runtime managed identity
+1. Use the existing Azure AI Foundry project and deployed model configured for this application. Do not create a replacement resource group, Foundry resource, project, or duplicate agent. Confirm access with `az login` and select the approved existing subscription locally.
+2. Give the provisioning identity permission to create agent versions and the runtime managed identity
    the Foundry User (previously Azure AI User) role scoped to the project. Use `az login` locally;
    deployed code uses `DefaultAzureCredential` and managed identity. Do not put credentials in git.
 3. Set `FOUNDRY_PROJECT_ENDPOINT` to `https://RESOURCE.services.ai.azure.com/api/projects/PROJECT`,
    `FOUNDRY_MODEL_DEPLOYMENT_NAME` to your actual deployment name, and
    `FOUNDRY_AGENT_NAME=employee-onboarding`.
-4. From the repository root run `python -m scripts.provision_agent`. This creates an agent version
-   in Azure and prints its name, version and ID. Every invocation creates a new version.
+4. From the repository root run `python -m scripts.provision_agent` only when deliberately creating
+   a new version of the existing agent. It prints the name, version and ID. Every invocation creates
+   a new version, so do not run it merely as a connectivity check.
 5. Set `FOUNDRY_AGENT_VERSION` to the returned version, then start the API. Retain the previous
    version to support rollback; update the runtime setting deliberately when promoting a version.
 6. Open the registered agent in Foundry. Exercise chat through the application so the application
