@@ -5,13 +5,13 @@ The existing application was retained and updated.
 
 ## Evidence
 
-- 39 offline tests passed; 1 PostgreSQL integration test skipped because a local PostgreSQL service is unavailable.
+- 49 offline tests passed; 1 PostgreSQL integration test skipped because a local PostgreSQL service is unavailable.
 - Ruff lint passed; final formatting check recorded at handoff.
 - Editable package installation and dependency checks succeeded.
 - SQLite Alembic upgrade/downgrade tested.
 - Browser smoke tested consent/case creation, resume, employee corrections and validation that blocks missing documents.
 - Supplied Azure endpoint reached; no-credential request returned 401.
-- The model smoke test refused to send a request because AZURE_OPENAI_API_KEY is empty.
+- Live API-key model test passed: gpt-4.1-mini returned CONNECTION_OK. Evidence: outputs/model-verification.json (outside the source repository).
 - No live managed-agent verification has completed. Do not interpret offline tests or HTTP 401 as cloud success.
 
 ## Manual configuration
@@ -25,6 +25,8 @@ C:\Users\richa\Documents\Codex\2026-09-20\https-github-com-aryan-verma-ai\work\r
 4. Production document processing additionally needs private Blob Storage, Defender scanning, Document Intelligence, PostgreSQL and the matching identity permissions. Development mode remains localhost-only with synthetic data until these are configured.
 
 The sandbox cannot read the user's existing Windows Azure CLI profile. Running the connection helper under that authenticated user avoids copying credential caches or disabling encryption.
+
+Authenticated confirmation download now implemented at GET /api/cases/{case_id}/confirmation; receipt uses actual employee issuance time and excludes identity/contact evidence. Seven tests cover authorization, status gates and audit. Optional empty Entra placeholders no longer break CLI credential fallback.
 
 ## Pending work
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from .auth import get_principal
 from .config import settings, validate_configuration
+from .confirmation import router as confirmation_router
 from .dashboard import router as dashboard_router
 from .db import engine, get_db
 from .documents import router as documents_router
@@ -79,6 +80,7 @@ def finalize_case(
 app.include_router(documents_router)
 app.include_router(dashboard_router)
 app.include_router(foundry_router)
+app.include_router(confirmation_router)
 
 
 class UpdateCase(BaseModel):

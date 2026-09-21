@@ -5,13 +5,13 @@ import os
 
 from azure.ai.projects import AIProjectClient
 from azure.ai.projects.models import PromptAgentDefinition
-from azure.identity import DefaultAzureCredential
 
+from app.azure_auth import azure_credential
 from app.foundry import INSTRUCTIONS, tool_definitions
 
 
 def main():
-    with DefaultAzureCredential() as credential:
+    with azure_credential() as credential:
         with AIProjectClient(
             endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"], credential=credential
         ) as project:

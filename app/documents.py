@@ -30,13 +30,14 @@ def validate_upload(content: bytes, content_type: str) -> None:
 
 
 def blob_client(key):
-    from azure.identity import DefaultAzureCredential
     from azure.storage.blob import BlobServiceClient
+
+    from app.azure_auth import azure_credential
 
     url = os.getenv("AZURE_STORAGE_ACCOUNT_URL")
     if not url:
         raise HTTPException(503, "Private Azure Blob storage is not configured")
-    service = BlobServiceClient(url, credential=DefaultAzureCredential())
+    service = BlobServiceClient(url, credential=azure_credential())
     container = service.get_container_client(os.getenv("AZURE_STORAGE_CONTAINER", "onboarding-private"))
     if container.get_container_properties().get("public_access"):
         raise HTTPException(503, "Storage container must disable public access")

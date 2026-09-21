@@ -35,7 +35,7 @@ Set `FOUNDRY_AGENT_VERSION` to the returned version. Restart the service and use
 2. Upload PAN/Aadhaar and supporting PDF/PNG/JPEG documents. Production download and extraction wait for a clean Defender scan result.
 3. Start extraction and refresh the case. Candidates retain document, page and confidence provenance; HR reviews them and supplies missing fields.
 4. Save corrections, attest review, and validate. Required fields/documents, scanning, review, conflicting high-confidence evidence and duplicate PAN checks block finalization.
-5. Use the explicit HR confirmation to create one employee record. Retries return the same ID. Chat can explain missing data and request validation; it cannot approve or create employee records.
+5. Use the explicit HR confirmation to create one employee record. Retries return the same ID. Download the minimal issuance receipt from `GET /api/cases/{case_id}/confirmation`. Chat can explain missing data and request validation; it cannot approve or create employee records.
 6. Filter the HR queue and export authorized fields as CSV/XLSX. Identity numbers are excluded from exports.
 
 Changing record fields invalidates prior document review. High-confidence conflicting evidence requires a corrected/replacement source document; the model cannot override it. Identifier syntax checks do not verify identity with a government service.

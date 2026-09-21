@@ -73,9 +73,10 @@ class FoundryGateway:
         self._owns_credential = credential is None
         if client is None:
             from azure.ai.projects import AIProjectClient
-            from azure.identity import DefaultAzureCredential
 
-            self.credential = credential or DefaultAzureCredential()
+            from app.azure_auth import azure_credential
+
+            self.credential = credential or azure_credential()
             self.project = AIProjectClient(endpoint=endpoint, credential=self.credential)
             client = self.project.get_openai_client(timeout=45.0, max_retries=1)
         self.client = client

@@ -49,9 +49,10 @@ def extract_document(content: bytes, document_id: str) -> dict:
     if not endpoint:
         raise RuntimeError("Document Intelligence endpoint is not configured")
     from azure.ai.documentintelligence import DocumentIntelligenceClient
-    from azure.identity import DefaultAzureCredential
+
+    from app.azure_auth import azure_credential
 
     # SDK retries transient HTTP failures; failed work remains explicitly retryable.
-    with DocumentIntelligenceClient(endpoint, DefaultAzureCredential(), retry_total=3) as client:
+    with DocumentIntelligenceClient(endpoint, azure_credential(), retry_total=3) as client:
         result = client.begin_analyze_document("prebuilt-read", body=io.BytesIO(content)).result(timeout=120)
     return candidates_from_result(result, document_id)

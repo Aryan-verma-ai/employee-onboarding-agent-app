@@ -81,8 +81,8 @@ The existing app now targets `employee-onboarding-agent-kc` in Korea Central:
 - Model deployment: `gpt-4.1-mini`
 - Model API: `https://employee-onboarding-kc-resource.services.ai.azure.com/openai/v1/`
 
-The repository `.env` is ignored by Git. At configuration time no key-bearing `.env` was found in the checkout or Codex workspace; the generated local `.env` contains non-secret configuration and an empty key placeholder. Supply the actual file path rather than posting a key in chat.
+The repository `.env` is ignored by Git. At configuration time no key-bearing `.env` was found in the checkout or Codex workspace; the generated local `.env` contains non-secret configuration and an empty key placeholder. The key was subsequently populated locally and the API-key model smoke test passed; no secret was displayed or committed.
 
 `python -m scripts.verify_model --env-file PATH --report REPORT.json` performs a small synthetic API-key model test. It prints no keys or raw provider error bodies and explicitly does not certify the managed agent. Azure AI Projects 2.x supports Entra authentication only. Use `scripts.connect_foundry` / `scripts.verify_foundry` with an accessible authorized Entra session to provision and verify the actual managed agent. A model response alone must never mark issue #6 complete.
 
-A no-credential request reached the supplied project endpoint and received HTTP 401. This confirms transport reachability only; authenticated model and agent verification remain pending.
+A no-credential request reached the supplied project endpoint and received HTTP 401. This confirms transport reachability only; the subsequent authenticated model smoke test passed. Managed-agent verification still needs Entra access.
