@@ -57,3 +57,7 @@ CI also provisions PostgreSQL and runs direct-table RLS isolation tests with a n
 - [Verification results](docs/VERIFICATION.md)
 
 Current boundaries: extraction jobs run in-process and require manual retry after a restart; chat is supported with one application worker; OCR maps PAN/Aadhaar/email candidates, with other fields entered by HR; document download uses an authenticated proxy rather than signed URLs. See the issue ledger for remaining work before production rollout.
+
+## Current Azure connection and worker
+
+Existing Foundry agent `employee-onboarding` version `1` in project `employee-onboarding-agent-kc` is verified. Eight live agent evaluations and synthetic PDF/PNG OCR passed on the existing Korea Central resource. See [deployment status](docs/DEPLOYMENT.md), [worker setup](docs/EXTRACTION.md), and [SSO setup](docs/SSO.md). Run `python -m alembic upgrade head` before starting against an existing database, then run a separately configured `python -m app.worker` for queued OCR. Credentials remain in ignored `.env`; never commit them.

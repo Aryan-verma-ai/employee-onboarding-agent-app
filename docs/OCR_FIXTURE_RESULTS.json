@@ -1,0 +1,26 @@
+[
+  {
+    "fixture": "synthetic-onboarding.pdf",
+    "fields": [
+      "aadhaar",
+      "email",
+      "full_name",
+      "pan",
+      "phone"
+    ],
+    "review_fields": [],
+    "candidate_count": 5
+  },
+  {
+    "fixture": "synthetic-onboarding.png",
+    "fields": [
+      "aadhaar",
+      "email",
+      "full_name",
+      "pan",
+      "phone"
+    ],
+    "review_fields": [],
+    "candidate_count": 5
+  }
+]

@@ -27,10 +27,14 @@ class OnboardingService:
         query = select(Case).where(Case.id == case_id, Case.tenant_id == self.principal.tenant_id)
         if not self.principal.is_hr:
             query = query.where(Case.owner_id == self.principal.subject)
-        case = self.db.scalar(query.with_for_update())
+        case = self.db.scalar(query.with_for_update().execution_options(populate_existing=True))
         if case is None:
             raise HTTPException(404, "Case not found")
         return case
+
+    def require_consent(self, case):
+        if not case.consent_at or case.consent_withdrawn_at:
+            raise HTTPException(403, "Active employee consent is required")
 
     def audit(self, case_id, action, details=None):
         self.db.add(
@@ -61,7 +65,7 @@ class OnboardingService:
         )
         self.db.add(case)
         self.db.flush()
-        self.audit(case.id, "consent-recorded")
+        self.audit(case.id, "consent-recorded", {"policy_version": case.consent_policy_version})
         self.db.commit()
         return case
 
@@ -109,7 +113,7 @@ class OnboardingService:
         for field, values in evidence.items():
             if len(values) > 1 or (case.data.get(field) and values != {case.data[field]}):
                 errors.append("conflict:" + field)
-        if not case.consent_at:
+        if not case.consent_at or case.consent_withdrawn_at:
             errors.append("consent")
         if case.data.get("pan"):
             fingerprint = sha256(case.data["pan"].strip().upper().encode()).hexdigest()
@@ -128,7 +132,12 @@ class OnboardingService:
         case = self.get_case(case_id)
         if case.status == "created":
             return case
+        self.require_consent(case)
+        from .validation import rule_outcomes
+
         case.missing_fields = self.validation_errors(case)
+        case.validation_outcomes = rule_outcomes(case.missing_fields)
+        self.audit(case.id, "validation-completed", {"failed_rules": case.missing_fields})
         self.transition(case, "needs-information" if case.missing_fields else "validated")
         self.db.commit()
         return case
@@ -137,6 +146,7 @@ class OnboardingService:
         if not self.principal.is_hr:
             raise HTTPException(403, "HR role required")
         case = self.get_case(case_id)
+        self.require_consent(case)
         if confirmed is not True:
             raise HTTPException(422, "Explicit HR confirmation required")
         if not idempotency_key or len(idempotency_key) > 128:

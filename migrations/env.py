@@ -3,7 +3,10 @@ import os
 from alembic import context
 from sqlalchemy import create_engine
 
+from app.jobs import ExtractionJob
 from app.models import Base
+
+assert ExtractionJob.__table__.metadata is Base.metadata
 
 config = context.config
 url = os.environ.get("DATABASE_URL", "sqlite:///./onboarding.db")

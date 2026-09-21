@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import Principal, get_principal
@@ -58,6 +58,7 @@ def list_cases(
     status: str | None = None,
     employee_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     principal: Principal = Depends(hr_principal),
 ):
@@ -69,7 +70,10 @@ def list_cases(
     ):
         if value:
             query = query.where(field == value)
-    return [summary(case) for case in db.scalars(query.order_by(Case.created_at.desc()).limit(limit))]
+    return [
+        summary(case)
+        for case in db.scalars(query.order_by(Case.created_at.desc(), Case.id).offset(offset).limit(limit))
+    ]
 
 
 @router.get("/api/hr/cases/{case_id}")
@@ -110,6 +114,7 @@ def case_detail(case_id: str, db: Session = Depends(get_db), principal: Principa
 @router.get("/api/hr/export")
 def export_cases(
     format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    limit: int = Query(5000, ge=1, le=5000),
     department: str | None = None,
     status: str | None = None,
     employee_id: str | None = None,
@@ -124,7 +129,13 @@ def export_cases(
     ):
         if value:
             query = query.where(field == value)
-    cases = db.scalars(query.limit(5000)).all()
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    if total > limit:
+        raise HTTPException(
+            422,
+            f"Export matches {total} cases, exceeding limit {limit}. Narrow your filters; no partial export was generated.",
+        )
+    cases = db.scalars(query.order_by(Case.created_at, Case.id).limit(limit)).all()
     rows = [{field: safe_cell(summary(case).get(field)) for field in EXPORT_FIELDS} for case in cases]
     service = OnboardingService(db, principal)
     for case in cases:

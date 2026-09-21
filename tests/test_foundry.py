@@ -90,3 +90,126 @@ def test_validation_uses_server_case():
 def test_configuration_required_no_fallback():
     with pytest.raises(ValueError, match="FOUNDRY_AGENT_VERSION"):
         FoundryGateway("endpoint", "name", "")
+
+
+def test_excessive_tool_fanout_is_rejected_before_execution():
+    call = NS(type="function_call", name="validate_onboarding", arguments="{}", call_id="x")
+    gateway, client, service = setup_gateway([reply([call] * 33)])
+    with pytest.raises(RuntimeError, match="tool call limit"):
+        gateway.chat("conv", "validate", service, "case")
+    service.validate_case.assert_not_called()
+
+
+def test_failed_response_not_presented_as_success():
+    response = reply(text="Created")
+    response.status = "failed"
+    gateway, client, service = setup_gateway([response])
+    with pytest.raises(RuntimeError, match="did not complete"):
+        gateway.chat("conv", "hello", service, "case")
+
+
+def test_key_adapter_rejects_untrusted_endpoint():
+    from app.foundry import project_key_client
+
+    for endpoint in [
+        "http://x.services.ai.azure.com/api/projects/p",
+        "https://attacker.example/api/projects/p",
+        "https://x.services.ai.azure.com/api/projects/p?redirect=x",
+        "https://x.services.ai.azure.com/api/projects/p/other",
+    ]:
+        with pytest.raises(ValueError):
+            project_key_client(endpoint, "synthetic-key")
+
+
+def test_key_adapter_scoped_header_and_agent_reference(monkeypatch):
+    import httpx
+
+    from app.foundry import project_key_client
+
+    seen = []
+    real_client = httpx.Client
+
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(200, json={"id": "conv-test", "object": "conversation", "created_at": 1})
+
+    class TestClient(real_client):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(handle), **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", TestClient)
+    client = project_key_client("https://unit.services.ai.azure.com/api/projects/p", "synthetic-key")
+    try:
+        assert client.conversations.create().id == "conv-test"
+        assert seen[0].headers["api-key"] == "synthetic-key"
+        assert "authorization" not in seen[0].headers
+        assert str(seen[0].url) == "https://unit.services.ai.azure.com/api/projects/p/openai/v1/conversations"
+        client.base_url = "https://attacker.example/"
+        with pytest.raises(Exception):
+            client.conversations.create()
+        assert len(seen) == 1
+    finally:
+        client.close()
+
+
+def test_withdrawn_consent_stops_before_cloud_call():
+    gateway, client, service = setup_gateway([])
+    service.require_consent.side_effect = PermissionError("consent withdrawn")
+    with pytest.raises(PermissionError):
+        gateway.chat(None, "hello", service, "case")
+    client.conversations.create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "status,problems,model_text,expected",
+    [
+        (
+            "needs-information",
+            ["conflict:full_name"],
+            "Please fill in your full name.",
+            "Conflicting evidence for full name",
+        ),
+        ("failed", ["extraction:pan"], "Please provide your PAN.", "Document processing failed"),
+    ],
+)
+def test_escalation_uses_authoritative_evidence(status, problems, model_text, expected):
+    from app.foundry import safe_status
+
+    case = {"status": status, "missing_fields": problems, "data": {"pan": "ABCDE1234F"}}
+    projection = safe_status(case)
+    assert projection["missing_fields"] == []
+    assert projection["escalation_required"] is True
+    assert projection["next_action"]
+    gateway, client, service = setup_gateway([reply(text=model_text)])
+    service.get_case.return_value = case
+    raw = []
+    result = gateway.chat("conv", "What next?", service, "case", on_model_response=raw.append)
+    assert expected in result["message"]
+    assert "HR review" in result["message"]
+    assert result["escalation_enforced"] is True
+    assert raw == [model_text]
+    assert "ABCDE1234F" not in str(result)
+
+
+def test_consent_rechecked_after_conversation_persistence():
+    gateway, client, service = setup_gateway([reply()])
+
+    def revoke(_):
+        service.require_consent.side_effect = PermissionError("withdrawn")
+
+    with pytest.raises(PermissionError):
+        gateway.chat(None, "hello", service, "case", revoke)
+    client.responses.create.assert_not_called()
+
+
+def test_consent_rechecked_after_tool_commit():
+    call = NS(type="function_call", name="validate_onboarding", arguments="{}", call_id="c")
+    gateway, client, service = setup_gateway([reply([call]), reply()])
+
+    def revoke(_):
+        service.require_consent.side_effect = PermissionError("withdrawn")
+
+    service.validate_case.side_effect = revoke
+    with pytest.raises(PermissionError):
+        gateway.chat("existing", "validate", service, "case")
+    assert client.responses.create.call_count == 1

@@ -41,3 +41,29 @@ def review_candidates(candidates: list[dict], threshold: float = 0.90) -> dict:
         else:
             accepted[field] = evidence[0]["value"]
     return {"accepted": accepted, "review_fields": review, "candidates": candidates}
+
+
+def rule_outcomes(errors: list[str]) -> list[dict]:
+    """Explain deterministic checks without copying identity values into audit data."""
+    rules = {field: "Required field must be present and correctly formatted" for field in REQUIRED_FIELDS}
+    rules.update(
+        {
+            "department": "Department must be supported",
+            "consent": "Employee consent must be active",
+            "duplicate:pan": "PAN must not belong to another employee in this tenant",
+        }
+    )
+    for document in REQUIRED_DOCUMENTS:
+        for prefix, explanation in {
+            "document": "Required document must be present",
+            "scan": "Document must pass the malware gate",
+            "extraction": "Document extraction must complete",
+            "review": "HR must review the extracted evidence",
+        }.items():
+            rules[f"{prefix}:{document}"] = explanation
+    for field in REQUIRED_FIELDS:
+        rules[f"conflict:{field}"] = "High-confidence document evidence must agree with the entered record"
+    return [
+        {"rule": rule, "passed": rule not in errors, "explanation": explanation}
+        for rule, explanation in rules.items()
+    ]

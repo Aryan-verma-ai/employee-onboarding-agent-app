@@ -44,13 +44,13 @@ def main(gateway=None):
     }
     conversation_id = None
     try:
-        agent = gateway.project.agents.get_version(
-            agent_name=gateway.reference["name"], agent_version=gateway.reference["version"]
-        )
-        names = {tool.name for tool in agent.definition.tools if getattr(tool, "name", None)}
+        agent = gateway.agent_metadata()
+        definition = agent["definition"]
+        names = {tool.get("name") for tool in definition.get("tools", [])}
         if not set(TOOL_DESCRIPTIONS).issubset(names):
             raise RuntimeError("Registered agent is missing required onboarding tools")
-        report["model_deployment"] = agent.definition.model
+        report["model_deployment"] = definition["model"]
+        report["metadata_verified"] = True
         with Session(engine, expire_on_commit=False) as db:
             service = OnboardingService(db, principal)
             case = service.create_case("Engineering", True)

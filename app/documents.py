@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .auth import Principal, get_principal
 from .config import settings
 from .db import get_db
-from .extraction import extract_document
+from .jobs import enqueue
 from .models import Document
 from .service import OnboardingService
 
@@ -127,8 +127,7 @@ async def upload_document(
 ):
     service = OnboardingService(db, principal)
     case = service.get_case(case_id)
-    if not case.consent_at:
-        raise HTTPException(403, "Consent is required")
+    service.require_consent(case)
     if case.status == "created":
         raise HTTPException(409, "Completed cases are immutable")
     if doc_type not in DOC_TYPES:
@@ -205,47 +204,16 @@ def download_document(
 def extract(
     case_id: str,
     document_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ):
     service, case, document = authorized_document(case_id, document_id, db, principal)
     if case.status == "created":
         raise HTTPException(409, "Completed cases are immutable")
-    content = read_clean_content(document)
-    document.extraction = {"status": "extracting", "retryable": True}
+    service.require_consent(case)
+    job = enqueue(db, principal, case, document)
+    document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
     service.transition(case, "extracting")
+    service.audit(case_id, "document.extraction_queued", {"document_id": document_id, "job_id": job.id})
     db.commit()
-    background_tasks.add_task(extraction_job, db.get_bind(), principal, case_id, document_id, content)
-    return {"status": "extracting", "document_id": document_id}
-
-
-def extraction_job(bind, principal, case_id, document_id, content):
-    with Session(bind) as db:
-        db.info["principal"] = principal
-        service, case, document = authorized_document(case_id, document_id, db, principal)
-        _complete_extraction(db, service, case, document, content)
-
-
-def _complete_extraction(db, service, case, document, content):
-    case_id, document_id = case.id, document.id
-    try:
-        result = extract_document(content, document.id)
-    except Exception:
-        # Never persist provider errors, OCR text or credentials in audit records.
-        document.extraction = {"status": "failed", "retryable": True, "error": "extraction_failed"}
-        service.transition(case, "failed")
-        service.audit(case_id, "document.extraction_failed", {"document_id": document_id})
-        db.commit()
-        return
-    document.extraction = {"status": "complete", **result}
-    # Human review is required even for high-confidence candidates. This prevents
-    # OCR or document-borne prompt instructions from silently changing identity.
-    if case.status == "failed":
-        service.transition(case, "extracting")
-    service.transition(case, "needs-information")
-    service.audit(
-        case_id, "document.extracted", {"document_id": document_id, "review_fields": result["review_fields"]}
-    )
-    db.commit()
-    return document.extraction
+    return {"status": job.status, "document_id": document_id, "job_id": job.id}

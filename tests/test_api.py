@@ -170,3 +170,36 @@ def test_http_hr_exports_filter_and_minimize_personal_data(api):
     sheet = load_workbook(io.BytesIO(xlsx.content), read_only=True).active
     assert sheet.max_row == 2
     assert sheet.cell(2, 5).value.startswith("'=")
+
+
+def test_consent_withdrawal_blocks_processing_and_is_owner_only(api):
+    client, actor, engine = api
+    case_id = create(client)
+    actor["principal"] = Principal("reviewer", "tenant-a", frozenset({"HR"}))
+    assert client.post(f"/api/cases/{case_id}/consent/withdraw", json={"confirmed": True}).status_code == 403
+    actor["principal"] = Principal("alice", "tenant-a", frozenset())
+    assert client.post(f"/api/cases/{case_id}/consent/withdraw", json={"confirmed": False}).status_code == 422
+    response = client.post(f"/api/cases/{case_id}/consent/withdraw", json={"confirmed": True})
+    assert response.status_code == 200
+    assert response.json()["consent_withdrawn_at"]
+    assert response.json()["consent_policy_version"] == "1"
+    assert client.post(f"/api/cases/{case_id}/validate").status_code == 403
+    assert (
+        client.patch(f"/api/cases/{case_id}", json={"data": {"email": "test@example.com"}}).status_code == 403
+    )
+    assert client.get(f"/api/cases/{case_id}").status_code == 200
+
+
+def test_validation_outcomes_are_persisted_and_explained(api):
+    client, actor, engine = api
+    case_id = create(client)
+    response = client.post(f"/api/cases/{case_id}/validate")
+    assert response.status_code == 200
+    outcomes = {item["rule"]: item for item in response.json()["validation_outcomes"]}
+    assert outcomes["consent"]["passed"] is True
+    assert outcomes["pan"]["passed"] is False
+    assert outcomes["document:pan"]["explanation"]
+    assert (
+        client.get(f"/api/cases/{case_id}").json()["validation_outcomes"]
+        == response.json()["validation_outcomes"]
+    )

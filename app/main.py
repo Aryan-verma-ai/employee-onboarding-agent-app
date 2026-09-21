@@ -12,6 +12,7 @@ from .documents import router as documents_router
 from .foundry import router as foundry_router
 from .models import Base
 from .service import OnboardingService
+from .sso import router as sso_router
 
 
 @asynccontextmanager
@@ -45,6 +46,9 @@ def case_response(case):
         "status": case.status,
         "data": case.data,
         "missing_fields": case.missing_fields,
+        "validation_outcomes": case.validation_outcomes,
+        "consent_policy_version": case.consent_policy_version,
+        "consent_withdrawn_at": case.consent_withdrawn_at,
         "employee_id": case.employee_id,
         "created_at": case.created_at,
     }
@@ -81,6 +85,7 @@ app.include_router(documents_router)
 app.include_router(dashboard_router)
 app.include_router(foundry_router)
 app.include_router(confirmation_router)
+app.include_router(sso_router)
 
 
 class UpdateCase(BaseModel):
@@ -97,6 +102,8 @@ def update_case(case_id: str, body: UpdateCase, svc=Depends(service)):
     from .validation import REQUIRED_FIELDS
 
     case = svc.get_case(case_id)
+    svc.require_consent(case)
+    case.validation_outcomes = []
     if case.status == "created":
         raise HTTPException(409, "Completed cases are immutable")
     if set(body.data) - set(REQUIRED_FIELDS) or any(len(value) > 500 for value in body.data.values()):
@@ -143,7 +150,31 @@ def ready():
     try:
         validate_configuration()
         with engine.connect() as connection:
-            connection.execute(text("SELECT 1 FROM onboarding_cases LIMIT 0"))
+            connection.execute(
+                text(
+                    "SELECT consent_withdrawn_at, consent_policy_version, validation_outcomes FROM onboarding_cases LIMIT 0"
+                )
+            )
+            connection.execute(text("SELECT lease_token, lease_until FROM extraction_jobs LIMIT 0"))
     except (RuntimeError, SQLAlchemyError):
         raise HTTPException(503, "Service configuration or database migration is not ready") from None
     return {"status": "ready", "cloud_connectivity": "not_probed"}
+
+
+@app.post("/api/cases/{case_id}/consent/withdraw")
+def withdraw_consent(case_id: str, body: Confirm, svc=Depends(service)):
+    from datetime import datetime, timezone
+
+    from fastapi import HTTPException
+
+    case = svc.get_case(case_id)
+    if svc.principal.subject != case.owner_id:
+        raise HTTPException(403, "Only the employee can withdraw their consent")
+    if body.confirmed is not True:
+        raise HTTPException(422, "Explicit withdrawal confirmation required")
+    if not case.consent_withdrawn_at:
+        case.consent_withdrawn_at = datetime.now(timezone.utc)
+        case.validation_outcomes = []
+        svc.audit(case.id, "consent-withdrawn", {"policy_version": case.consent_policy_version})
+        svc.db.commit()
+    return case_response(case)

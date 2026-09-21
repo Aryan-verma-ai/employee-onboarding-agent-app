@@ -1,9 +1,7 @@
-"""Initial schema bootstrap. Run explicitly before production app startup.
+"""Apply versioned migrations; never bypass PostgreSQL RLS with create_all."""
 
-This MVP uses SQLAlchemy metadata; adopt Alembic revisions before changing deployed schema.
-"""
+from alembic import command
+from alembic.config import Config
 
-from app.db import engine
-from app.models import Base
-
-Base.metadata.create_all(engine)
+if __name__ == "__main__":
+    command.upgrade(Config("alembic.ini"), "head")
