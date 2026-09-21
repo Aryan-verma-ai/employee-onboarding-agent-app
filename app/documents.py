@@ -1,0 +1,250 @@
+"""Consent-gated private document storage and retryable extraction."""
+
+import hashlib
+import os
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .auth import Principal, get_principal
+from .config import settings
+from .db import get_db
+from .extraction import extract_document
+from .models import Document
+from .service import OnboardingService
+
+router = APIRouter(prefix="/api/cases", tags=["documents"])
+TYPES = {"application/pdf": b"%PDF-", "image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff"}
+DOC_TYPES = {"pan", "aadhaar", "resume", "photograph", "offer_letter", "education", "bank", "other"}
+
+
+def validate_upload(content: bytes, content_type: str) -> None:
+    if not content or len(content) > settings.max_upload_bytes:
+        raise HTTPException(413, "Document is empty or exceeds upload limit")
+    if content_type not in TYPES or not content.startswith(TYPES[content_type]):
+        raise HTTPException(415, "Only matching PDF, PNG and JPEG content is accepted")
+
+
+def blob_client(key):
+    from azure.identity import DefaultAzureCredential
+    from azure.storage.blob import BlobServiceClient
+
+    url = os.getenv("AZURE_STORAGE_ACCOUNT_URL")
+    if not url:
+        raise HTTPException(503, "Private Azure Blob storage is not configured")
+    service = BlobServiceClient(url, credential=DefaultAzureCredential())
+    container = service.get_container_client(os.getenv("AZURE_STORAGE_CONTAINER", "onboarding-private"))
+    if container.get_container_properties().get("public_access"):
+        raise HTTPException(503, "Storage container must disable public access")
+    return container.get_blob_client(key)
+
+
+def local_path(key):
+    root = Path(settings.storage_path).resolve()
+    target = (root / key).resolve()
+    if not target.is_relative_to(root):
+        raise HTTPException(400, "Invalid document key")
+    return target
+
+
+def store_content(key, content, content_type):
+    if settings.environment == "development":
+        path = local_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        return "local-unscanned-dev"
+    from azure.storage.blob import ContentSettings
+
+    blob_client(key).upload_blob(
+        content, overwrite=False, content_settings=ContentSettings(content_type=content_type)
+    )
+    # Microsoft Defender for Storage asynchronously tags the blob. No client can
+    # assert that a file is clean; downloads/OCR wait for trusted scanner evidence.
+    return "pending"
+
+
+def read_clean_content(document):
+    if settings.environment == "development":
+        return local_path(document.storage_key).read_bytes()
+    client = blob_client(document.storage_key)
+    result = client.get_blob_tags().get("Malware Scanning scan result")
+    if result != "No threats found":
+        raise HTTPException(409, "Document is awaiting a clean malware scan; retry later")
+    document.scan_status = "clean"
+    return client.download_blob(max_concurrency=1).readall()
+
+
+def authorized_document(case_id, document_id, db, principal):
+    service = OnboardingService(db, principal)
+    case = service.get_case(case_id)
+    document = db.scalar(
+        select(Document).where(
+            Document.id == document_id, Document.case_id == case.id, Document.tenant_id == principal.tenant_id
+        )
+    )
+    if not document:
+        raise HTTPException(404, "Document not found")
+    return service, case, document
+
+
+@router.get("/{case_id}/documents")
+def list_documents(
+    case_id: str, db: Session = Depends(get_db), principal: Principal = Depends(get_principal)
+):
+    service = OnboardingService(db, principal)
+    service.get_case(case_id)
+    docs = db.scalars(
+        select(Document)
+        .where(Document.case_id == case_id, Document.tenant_id == principal.tenant_id)
+        .order_by(Document.created_at)
+    ).all()
+    service.audit(case_id, "documents.viewed")
+    db.commit()
+    return [
+        {
+            "id": doc.id,
+            "doc_type": doc.doc_type,
+            "version": doc.version,
+            "scan_status": doc.scan_status,
+            "extraction": doc.extraction,
+        }
+        for doc in docs
+    ]
+
+
+@router.post("/{case_id}/documents", status_code=201)
+async def upload_document(
+    case_id: str,
+    file: UploadFile = File(...),
+    doc_type: str = Form(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    service = OnboardingService(db, principal)
+    case = service.get_case(case_id)
+    if not case.consent_at:
+        raise HTTPException(403, "Consent is required")
+    if case.status == "created":
+        raise HTTPException(409, "Completed cases are immutable")
+    if doc_type not in DOC_TYPES:
+        raise HTTPException(422, "Unsupported document category")
+    content = await file.read(settings.max_upload_bytes + 1)
+    validate_upload(content, file.content_type)
+    digest = hashlib.sha256(content).hexdigest()
+    existing = db.scalar(
+        select(Document).where(
+            Document.case_id == case_id, Document.sha256 == digest, Document.doc_type == doc_type
+        )
+    )
+    if existing:
+        return {"id": existing.id, "version": existing.version, "duplicate": True}
+    version = (
+        db.scalar(
+            select(func.max(Document.version)).where(
+                Document.case_id == case_id, Document.doc_type == doc_type
+            )
+        )
+        or 0
+    ) + 1
+    document_id = str(uuid4())
+    key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
+    scan_status = store_content(key, content, file.content_type)
+    document = Document(
+        id=document_id,
+        case_id=case_id,
+        tenant_id=principal.tenant_id,
+        filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
+        content_type=file.content_type,
+        storage_key=key,
+        sha256=digest,
+        doc_type=doc_type,
+        version=version,
+        scan_status=scan_status,
+        extraction={"status": "pending"},
+        size=len(content),
+    )
+    db.add(document)
+    service.audit(
+        case_id, "document.uploaded", {"document_id": document_id, "version": version, "doc_type": doc_type}
+    )
+    if case.status == "failed":
+        service.transition(case, "extracting")
+    service.transition(case, "needs-information")
+    db.commit()
+    return {"id": document_id, "version": version, "scan_status": scan_status, "sha256": digest}
+
+
+@router.get("/{case_id}/documents/{document_id}/download")
+def download_document(
+    case_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    service, case, document = authorized_document(case_id, document_id, db, principal)
+    content = read_clean_content(document)
+    service.audit(case_id, "document.downloaded", {"document_id": document_id})
+    db.commit()
+    return Response(
+        content,
+        media_type=document.content_type,
+        headers={
+            "Content-Disposition": "attachment",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/{case_id}/documents/{document_id}/extract", status_code=202)
+def extract(
+    case_id: str,
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    service, case, document = authorized_document(case_id, document_id, db, principal)
+    if case.status == "created":
+        raise HTTPException(409, "Completed cases are immutable")
+    content = read_clean_content(document)
+    document.extraction = {"status": "extracting", "retryable": True}
+    service.transition(case, "extracting")
+    db.commit()
+    background_tasks.add_task(extraction_job, db.get_bind(), principal, case_id, document_id, content)
+    return {"status": "extracting", "document_id": document_id}
+
+
+def extraction_job(bind, principal, case_id, document_id, content):
+    with Session(bind) as db:
+        db.info["principal"] = principal
+        service, case, document = authorized_document(case_id, document_id, db, principal)
+        _complete_extraction(db, service, case, document, content)
+
+
+def _complete_extraction(db, service, case, document, content):
+    case_id, document_id = case.id, document.id
+    try:
+        result = extract_document(content, document.id)
+    except Exception:
+        # Never persist provider errors, OCR text or credentials in audit records.
+        document.extraction = {"status": "failed", "retryable": True, "error": "extraction_failed"}
+        service.transition(case, "failed")
+        service.audit(case_id, "document.extraction_failed", {"document_id": document_id})
+        db.commit()
+        return
+    document.extraction = {"status": "complete", **result}
+    # Human review is required even for high-confidence candidates. This prevents
+    # OCR or document-borne prompt instructions from silently changing identity.
+    if case.status == "failed":
+        service.transition(case, "extracting")
+    service.transition(case, "needs-information")
+    service.audit(
+        case_id, "document.extracted", {"document_id": document_id, "review_fields": result["review_fields"]}
+    )
+    db.commit()
+    return document.extraction

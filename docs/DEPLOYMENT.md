@@ -1,0 +1,24 @@
+# Azure deployment and operational setup
+
+This is a deployment runbook, not evidence that Azure resources have been created. No live project endpoint or model deployment was supplied during implementation.
+
+1. Select your Azure subscription/resource group and region. Create a Foundry project and a tool-capable model deployment using the portal. Record project endpoint and deployment name. Create the managed agent with `scripts/provision_agent.py` as described in FOUNDRY.md.
+2. Create Azure Database for PostgreSQL. Use an administrative migration identity to run `python -m alembic upgrade head`, then a separate runtime login with schema USAGE and table SELECT/INSERT/UPDATE permissions. The runtime must be NOSUPERUSER and NOBYPASSRLS. Never use a database administrator login in the application. Migration 0001 forces row security on all business tables. API sessions set tenant/user/HR context transaction-locally; direct database access is an administrative trust boundary.
+3. Create a private Azure Storage account/container; disable anonymous blob access and enable Defender for Storage malware scanning. Grant the runtime managed identity access to blobs and read access to malware result tags; do not grant end users storage credentials. Configure `AZURE_STORAGE_ACCOUNT_URL` and `AZURE_STORAGE_CONTAINER`. Only `No threats found` scanner results unlock OCR/download. Pending/failed scans remain blocked.
+4. Create Azure Document Intelligence and grant runtime identity access. Configure `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`. The app uses `prebuilt-read`, not an assumed country-specific government-ID verifier.
+5. Register an Entra API application. Set the API audience and tenant, define the `Onboarding.HR` app role, and assign it to authorized HR operators. The API checks RS256 signature, tenant-specific issuer, audience and expiry. The current dashboard accepts an API bearer token in memory; add your organization's interactive MSAL login before wider release. Tokens are never stored in localStorage.
+6. Build `docker build -t onboarding-foundry .`. Deploy the container to your approved Azure compute environment with a managed identity and **one worker/one replica**. Inject configuration from secure environment settings/Key Vault; use PostgreSQL with TLS. Set ENVIRONMENT=production and ALLOW_DEV_AUTH=false. Configure the pinned agent name/version, not a generic model-only endpoint. Never ship `.env` in the image.
+7. Link Application Insights in Foundry for agent traces, restrict access, and set retention. Application audits contain correlation identifiers, not raw OCR/prompt text. Set retention/deletion for document blobs, database identity fields, Foundry conversations and traces before storing real employee data.
+8. Run cloud acceptance using synthetic documents: upload -> trusted clean scan -> extraction -> HR corrections/review -> validation -> explicit finalization -> restart and resume the Foundry conversation. Test a different owner/tenant, conflicting documents, failed scanning, bad tokens and duplicate record submissions. Inspect the Azure agent version and response IDs.
+
+## Required environment
+
+See `.env.example`; production additionally requires a PostgreSQL DATABASE_URL (with `sslmode=require` or stronger verification as appropriate) and all cloud/Entra fields. FOUNDRY_MODEL_DEPLOYMENT_NAME is used only when provisioning an agent version. DefaultAzureCredential selects managed identity in Azure or an authorized developer identity locally.
+
+## Operations and known limits
+
+The OCR job is a persisted status plus FastAPI BackgroundTasks, not a durable Azure queue. A terminated process can leave `extracting` status; retry the extraction endpoint manually. Before scaling, move jobs to a durable queue/worker and use a distributed Foundry conversation lock. Scanning integration depends on your Defender configuration and has not been exercised against a real account here.
+
+Use migration credentials only for release jobs; do not run schema creation automatically in production. Keep the previous Foundry agent version for rollback and take database backups before schema changes. The initial migration has an explicit downgrade for an empty test deployment; do not downgrade a populated production database casually.
+
+Document history is retained when replacing a file. Latest versions are used for required-document validation. A privacy retention/purge process and enterprise SSO UI are still deployment work. Do not treat this implementation as a completed compliance assessment.
