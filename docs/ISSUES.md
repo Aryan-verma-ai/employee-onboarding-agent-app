@@ -14,3 +14,7 @@ Existing implementation retained; existing Foundry agent employee-onboarding ver
 |8 Dashboard|Developer1|HR queue, filters, pagination, bounded exports, bundled MSAL sign-in, accessible focus/status, account-switch clearing|Live Entra sign-in and final browser accessibility acceptance|
 
 Roles above are internal subagent responsibilities, not GitHub account assignments. Issues with remaining acceptance work must stay open. GitHub comments should link the implementation commit and distinguish local PostgreSQL tests from live Azure tests. No new subscription, resource group or Foundry project was created.
+
+## Published checkpoint
+
+Commit0806186 is pushed; PR#9 is open for review. GitHub Actions succeeded for this revision. Evidence comments were posted on all eight issues; issues1,2,4,5,7 closed after acceptance checks. Issues3,6,8 remain open for the specific gaps above.
