@@ -16,11 +16,10 @@ The existing application was retained and updated.
 
 ## Manual configuration
 
-The Git-ignored .env exists at:
-C:\Users\richa\Documents\Codex\2026-09-20\https-github-com-aryan-verma-ai\work\repo\.env
+The Git-ignored `.env` must be created locally from `.env.example` and populated through an approved secure channel. Confirm it is ignored with `git check-ignore .env` before staging any files.
 
-1. Add your resource API key to AZURE_OPENAI_API_KEY in that file for the model-only smoke test. Do not paste it into chat.
-2. For the actual managed agent, use your Entra-authenticated PowerShell terminal to run outputs/Connect-Azure.ps1. It targets the supplied project/deployment, creates an agent version, verifies real tool calls and conversation reuse, writes the evidence report, and updates only non-secret agent settings in .env.
+1. Add your resource API key to `AZURE_OPENAI_API_KEY` in that local file for the model-only smoke test. Do not paste it into chat.
+2. For the actual managed agent, use an Entra-authenticated PowerShell terminal to run `python -m scripts.connect_foundry` followed by `python -m scripts.verify_foundry`. They target the configured project/deployment, verify real tool calls and conversation reuse, and must not print or write secrets.
 3. AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET are optional service-principal alternatives. Leave the client-secret fields empty when using Azure CLI or managed identity. ENTRA_TENANT_ID/ENTRA_AUDIENCE separately configure user authentication to the application.
 4. Production document processing additionally needs private Blob Storage, Defender scanning, Document Intelligence, PostgreSQL and the matching identity permissions. Development mode remains localhost-only with synthetic data until these are configured.
 
