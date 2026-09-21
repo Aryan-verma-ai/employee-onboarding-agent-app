@@ -6,3 +6,5 @@
 - Regression coverage includes consent withdrawal and checks after Foundry conversation persistence/tool commits, durable job lease fencing/recovery and SSO configuration/pagination.
 - Full test count and output are recorded in the delivered outputs/test-results.txt. CI runs PostgreSQL tests using its service container.
 - No live Blob/Defender or Entra interactive tenant sign-in acceptance has been claimed. See DEPLOYMENT.md for exact remaining configuration.
+
+Create `.env` locally from `.env.example` through an approved secure channel; verify `git check-ignore .env` before staging. Never copy Azure CLI credential caches or commit keys. Current test result:87 passed, no skipped PostgreSQL tests; Ruff lint and formatting passed.

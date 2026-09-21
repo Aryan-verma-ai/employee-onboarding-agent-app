@@ -7,15 +7,16 @@ name and version through the Foundry project endpoint. No model is selected at r
 
 ## Provision and run
 
-1. Create an Azure AI Foundry resource/project and deploy a model supporting function tools.
-2. Give the provisioning identity permission to create agents and the runtime managed identity
+1. Use the existing Azure AI Foundry project and deployed model configured for this application. Do not create a replacement resource group, Foundry resource, project, or duplicate agent. Confirm access with `az login` and select the approved existing subscription locally.
+2. Give the provisioning identity permission to create agent versions and the runtime managed identity
    the Foundry User (previously Azure AI User) role scoped to the project. Use `az login` locally;
    deployed code uses `DefaultAzureCredential` and managed identity. Do not put credentials in git.
 3. Set `FOUNDRY_PROJECT_ENDPOINT` to `https://RESOURCE.services.ai.azure.com/api/projects/PROJECT`,
    `FOUNDRY_MODEL_DEPLOYMENT_NAME` to your actual deployment name, and
    `FOUNDRY_AGENT_NAME=employee-onboarding`.
-4. From the repository root run `python -m scripts.provision_agent`. This creates an agent version
-   in Azure and prints its name, version and ID. Every invocation creates a new version.
+4. From the repository root run `python -m scripts.provision_agent` only when deliberately creating
+   a new version of the existing agent. It prints the name, version and ID. Every invocation creates
+   a new version, so do not run it merely as a connectivity check.
 5. Set `FOUNDRY_AGENT_VERSION` to the returned version, then start the API. Retain the previous
    version to support rollback; update the runtime setting deliberately when promoting a version.
 6. Open the registered agent in Foundry. Exercise chat through the application so the application
@@ -31,9 +32,7 @@ Projects 1.x/classic threads/runs examples are incompatible with this integratio
 `POST /api/cases/{case_id}/chat` authenticates first and checks case access before any Azure call.
 The database stores the Foundry conversation ID, including before the first model response to
 preserve a newly created conversation if an upstream call fails. Clients cannot supply conversation
-IDs. An in-process lock serializes chat requests in the supported single-worker deployment to
-prevent parallel conversation creation or overlapping tool turns. A distributed lock is required
-before scaling multiple workers.
+IDs. PostgreSQL session advisory locks serialize conversations across workers; SQLite uses development-only process locks. See OBSERVABILITY.md for connection/timeout behavior.
 
 The two zero-argument tools read status and request deterministic validation. They receive the
 authorized case from the server, never the model. Tool output contains only status, missing field
@@ -54,7 +53,7 @@ tracing. Restrict telemetry access and configure retention; agent conversations 
 data even when tool results are minimal. Correlate application audit response IDs with Foundry traces.
 
 `pytest tests/test_foundry.py` runs **mocked offline contract tests**, not cloud acceptance tests.
-`python -m evaluations.run` runs the synthetic fixture suite against the configured real Azure agent,
+`python -m evaluations.run --live` runs the synthetic fixture suite against the configured real Azure agent,
 consumes model tokens and deletes its test conversations. It uses synthetic tool state and basic
 forbidden-phrase checks. Review responses manually and add Foundry rubric evaluation for task
 adherence, correct tool use, privacy, missing-information handling and refusal to bypass HR review.
@@ -86,3 +85,7 @@ The repository `.env` is ignored by Git. At configuration time no key-bearing `.
 `python -m scripts.verify_model --env-file PATH --report REPORT.json` performs a small synthetic API-key model test. It prints no keys or raw provider error bodies and explicitly does not certify the managed agent. Azure AI Projects 2.x supports Entra authentication only. Use `scripts.connect_foundry` / `scripts.verify_foundry` with an accessible authorized Entra session to provision and verify the actual managed agent. A model response alone must never mark issue #6 complete.
 
 A no-credential request reached the supplied project endpoint and received HTTP 401. This confirms transport reachability only; the subsequent authenticated model smoke test passed. Managed-agent verification still needs Entra access.
+
+## Verified current connection (2026-09-22)
+
+The existing managed agent version1 has now been verified through the scoped API-key REST adapter; the Entra limitation above describes the Azure SDK authentication path, not the project REST transport. Eight live scenario evaluations passed for both raw model responses and guarded application outcomes. No new agent was provisioned. Same-resource Document Intelligence passed synthetic PDF/PNG OCR. Follow DEPLOYMENT.md for remaining production setup.

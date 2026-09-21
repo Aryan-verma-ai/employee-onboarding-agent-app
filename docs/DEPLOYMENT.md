@@ -22,3 +22,5 @@ The ignored local `.env` selects `FOUNDRY_AUTH_MODE=api_key` and `AZURE_DOCUMENT
 Consent policy version 1 identifies the application's initial affirmative collection workflow; it is not legal approval. An employee can POST `/api/cases/{id}/consent/withdraw` with `confirmed=true`. Subsequent collection, OCR, validation and chat require active consent. Historical records/audits remain available for authorized review; withdrawal does not automatically erase records. Retention/deletion needs an approved organizational policy.
 
 Use migrations for existing databases, including local databases created by an earlier version. `create_all` does not upgrade existing tables. Back up existing data first. Do not downgrade populated production tables. Migration0002 adds durable jobs;0003 adds consent and validation evidence.
+
+Recovery guardrail: do not create duplicate agents or replace existing Azure resources. `scripts.provision_agent` is only a deliberate new-version promotion step, never a connectivity check.
