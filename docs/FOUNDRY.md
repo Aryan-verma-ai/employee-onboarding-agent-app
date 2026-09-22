@@ -34,12 +34,17 @@ The database stores the Foundry conversation ID, including before the first mode
 preserve a newly created conversation if an upstream call fails. Clients cannot supply conversation
 IDs. PostgreSQL session advisory locks serialize conversations across workers; SQLite uses development-only process locks. See OBSERVABILITY.md for connection/timeout behavior.
 
-The two zero-argument tools read status and request deterministic validation. They receive the
-authorized case from the server, never the model. Tool output contains only status, missing field
-names, and whether creation has occurred. Employee creation is deliberately absent from tools:
-the HR user must use the explicit authenticated finalization endpoint after reviewing valid data.
-Chat text cannot forge that approval. PAN/Aadhaar-like patterns are redacted before submission and
-in assistant output; this is defense in depth, not comprehensive personal-data classification.
+The six zero-argument tools receive the authorized case from the server, never the model:
+`get_onboarding_status`, `inspect_uploaded_documents`, `request_document_extraction`,
+`build_employee_profile`, `validate_onboarding`, and `prepare_hr_confirmation`. They invoke the
+FastAPI service boundary to retrieve case state, inspect document metadata, queue durable extraction
+jobs, compile a non-PII profile readiness view, validate deterministically, and present finalization
+readiness. Extraction remains asynchronous; the tool never invents OCR completion. Authoritative
+employee fields remain HR-reviewed form data, so the profile tool never writes OCR values. Employee
+creation is deliberately absent from tools: the HR user must use the explicit authenticated
+finalization endpoint after reviewing valid data. Chat text cannot forge that approval. PAN/Aadhaar-like
+patterns are redacted before submission and in assistant output; this is defense in depth, not
+comprehensive personal-data classification.
 
 The loop permits at most eight response rounds. Unknown tools and extra arguments are rejected.
 Audit records contain response/conversation IDs, pinned agent reference and tool names, not raw

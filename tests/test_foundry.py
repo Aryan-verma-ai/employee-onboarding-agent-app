@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.foundry import FoundryGateway, redact_identity
+from app.foundry import TOOL_DESCRIPTIONS, FoundryGateway, redact_identity
 
 
 def setup_gateway(outputs):
@@ -85,6 +85,37 @@ def test_validation_uses_server_case():
     gateway, client, service = setup_gateway([reply([call]), reply()])
     gateway.chat("conv", "validate", service, "server-bound-case")
     service.validate_case.assert_called_once_with("server-bound-case")
+
+
+@pytest.mark.parametrize(
+    ("name", "service_method"),
+    [
+        ("inspect_uploaded_documents", "document_workflow"),
+        ("request_document_extraction", "request_document_extraction"),
+        ("build_employee_profile", "profile_readiness"),
+        ("prepare_hr_confirmation", "confirmation_readiness"),
+    ],
+)
+def test_workflow_tools_invoke_only_the_server_bound_case(name, service_method):
+    call = NS(type="function_call", name=name, arguments="{}", call_id="workflow")
+    gateway, _, service = setup_gateway([reply([call]), reply()])
+    getattr(service, service_method).return_value = {"tool": name}
+
+    gateway.chat("conv", "continue", service, "server-bound-case")
+
+    getattr(service, service_method).assert_called_once_with("server-bound-case")
+    service.finalize_case.assert_not_called()
+
+
+def test_foundry_agent_exposes_full_orchestration_toolset():
+    assert set(TOOL_DESCRIPTIONS) == {
+        "get_onboarding_status",
+        "inspect_uploaded_documents",
+        "request_document_extraction",
+        "build_employee_profile",
+        "validate_onboarding",
+        "prepare_hr_confirmation",
+    }
 
 
 def test_configuration_required_no_fallback():
