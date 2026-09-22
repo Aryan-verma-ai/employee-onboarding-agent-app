@@ -2,6 +2,10 @@
 
 An employee-onboarding service whose conversational agent is created and versioned in **Azure AI Foundry Agent Service**. FastAPI implements authenticated tools and the HR workflow; Azure Document Intelligence extracts document candidates and private Azure Blob Storage holds uploads. There is no replacement local chatbot.
 
+## Live demonstration
+
+The short-lived Azure demonstration is available at `https://eonbdemo922app.icyflower-fd71ac7e.koreacentral.azurecontainerapps.io/hr`. It uses the existing Foundry agent and real PostgreSQL/Blob resources. See [the final demo runbook](docs/FINAL-DEMO.md) before using it; use only authorized, synthetic test records until organizational privacy and retention approval is in place.
+
 ## Start locally
 
 Requires Python 3.11+ (tested with 3.12). From this repository:
