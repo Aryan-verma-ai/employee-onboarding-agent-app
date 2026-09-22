@@ -137,9 +137,14 @@
                 <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Official Employee ID</div>
                 <div id="success-emp-id" style="font-size: 1.3em; font-weight: 800; color: #0078d4; letter-spacing: 1px;"></div>
             </div>
-            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Start Working Date</div>
                 <div id="success-start-date" style="font-size: 1.05em; font-weight: 700; color: #333;"></div>
+            </div>
+            <div id="success-email-box" style="background: #eef6ff; border-radius: 6px; padding: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #b9d7ea;">
+                <div style="font-size: 0.75em; text-transform: uppercase; color: #005a9e; font-weight: bold;">Official Welcome Email</div>
+                <div id="success-email-text" style="font-size: 0.85em; color: #004578; margin-top: 3px; word-break: break-all;">✉️ Dispatched to candidate</div>
+                <button id="btn-resend-email" onclick="resendWelcomeEmail()" style="margin-top: 6px; font-size: 0.78em; padding: 4px 10px; background: #0078d4; color: white; border: none; border-radius: 3px; cursor: pointer;">✉️ Resend Email</button>
             </div>
             <button onclick="openFullProfileModal()" style="width: 100%; font-size: 0.9em; padding: 8px; background: #2e7d32; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;">📋 View Full Employee Profile</button>
         </div>
@@ -249,12 +254,14 @@
                 <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Aadhaar Number:</td><td id="modal-aadhaar" style="padding: 9px 0; color: #1e293b;"></td></tr>
                 <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Date of Birth:</td><td id="modal-dob" style="padding: 9px 0; color: #1e293b;"></td></tr>
                 <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Residential Address:</td><td id="modal-address" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Welcome Email:</td><td id="modal-email-status" style="padding: 9px 0; color: #166534; font-weight: 600;">✉️ Sent</td></tr>
                 <tr><td style="padding: 9px 0; font-weight: 600; color: #475569;">Onboarding Status:</td><td id="modal-status" style="padding: 9px 0; color: #166534; font-weight: 700;">✅ Active / Verified</td></tr>
             </table>
         </div>
 
-        <div style="display: flex; gap: 12px; justify-content: flex-end;">
-            <button onclick="exportProfile()" class="btn-primary" style="background: #0078d4; padding: 8px 16px;">📥 Export Profile (Excel)</button>
+        <div style="display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
+            <button onclick="resendWelcomeEmail()" class="btn-secondary" style="padding: 8px 16px; background: #0078d4; color: white;">✉️ Resend Welcome Email</button>
+            <button onclick="exportProfile()" class="btn-primary" style="background: #2e7d32; padding: 8px 16px;">📥 Export Profile (Excel)</button>
             <button onclick="closeFullProfileModal()" class="btn-secondary" style="padding: 8px 16px;">Close</button>
         </div>
     </div>
@@ -480,6 +487,10 @@
             document.getElementById('success-emp-id').innerText = caseData.employee_id;
             document.getElementById('success-start-date').innerText = data.start_date || caseData.start_date || 'Assigned';
             document.getElementById('success-welcome-msg').innerText = caseData.onboarding_message || `Welcome to the team, ${data.full_name || 'Employee'}!`;
+            const sentEmail = data.welcome_email_sent_to || data.email;
+            if (sentEmail) {
+                document.getElementById('success-email-text').innerText = `✉️ Dispatched to: ${sentEmail}`;
+            }
         } else {
             document.getElementById('onboarding-success-card').classList.add('hidden');
         }
@@ -672,13 +683,14 @@
             await refreshProfile();
             const empId = res.employee_id || (res.data && res.data.employee_id) || '';
             const startDate = res.start_date || (res.data && res.data.start_date) || '';
-            addSystemMessage(`🎉 Onboarding validated! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}`);
+            const emailRecipient = (res.email_status && res.email_status.recipient) || (res.data && res.data.email) || '';
+            addSystemMessage(`🎉 Onboarding validated! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · ✉️ Welcome email dispatched to: ' + emailRecipient : ''}`);
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
                     method: 'POST',
-                    body: { message: "My case has been validated. Please provide my new Employee ID, assigned start date, and official welcome message." }
+                    body: { message: "My case has been validated. Please confirm my new Employee ID, assigned start date, and that my official congratulations welcome email has been sent." }
                 });
-                appendChatMessage('user', "My case has been validated. What is my Employee ID and start date?");
+                appendChatMessage('user', "My case has been validated. What is my Employee ID, start date, and email status?");
                 appendChatMessage('agent', resp.response || resp.message || res.onboarding_message || "Congratulations! Onboarding is complete.");
             } catch(e) {
                 console.warn("Could not query agent on validation", e);
@@ -700,6 +712,8 @@
         document.getElementById('modal-aadhaar').innerText = d.aadhaar ? d.aadhaar : '—';
         document.getElementById('modal-dob').innerText = d.dob || '—';
         document.getElementById('modal-address').innerText = d.address || '—';
+        const sentEmail = d.welcome_email_sent_to || d.email;
+        document.getElementById('modal-email-status').innerText = sentEmail ? `✉️ Dispatched to ${sentEmail}` : 'Pending';
         document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active / Onboarded' : c.status;
         
         const photoImg = document.getElementById('profile-photo-img');
@@ -719,6 +733,22 @@
 
     function closeFullProfileModal() {
         document.getElementById('full-profile-modal').classList.add('hidden');
+    }
+
+    async function resendWelcomeEmail() {
+        if (!currentCaseId) return;
+        run(async () => {
+            const btn = document.getElementById('btn-resend-email');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await api(`/api/cases/${currentCaseId}/email/welcome`, { method: 'POST' });
+                addSystemMessage(`✉️ Welcome email dispatched to ${res.recipient || 'candidate'}!`);
+                alert(`Official welcome email successfully sent to ${res.recipient || 'the employee'}!`);
+                await refreshProfile();
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
     }
 
     async function finalizeCase() {

@@ -23,7 +23,7 @@
             {"name": "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "value": "https://employee-onboarding-kc-resource.cognitiveservices.azure.com/"},
             {"name": "FOUNDRY_PROJECT_ENDPOINT", "value": "https://employee-onboarding-kc-resource.services.ai.azure.com/api/projects/employee-onboarding-agent-kc"},
             {"name": "FOUNDRY_AGENT_NAME", "value": "employee-onboarding"},
-            {"name": "FOUNDRY_AGENT_VERSION", "value": "1"},
+            {"name": "FOUNDRY_AGENT_VERSION", "value": "8"},
             {"name": "FOUNDRY_AUTH_MODE", "value": "api_key"},
             {"name": "AZURE_OPENAI_API_KEY", "secretRef": "azure-ai-key"},
             {"name": "AZURE_DOCUMENT_INTELLIGENCE_AUTH_MODE", "value": "api_key"},

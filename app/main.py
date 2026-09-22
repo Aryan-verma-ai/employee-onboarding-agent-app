@@ -101,14 +101,32 @@ def get_case(case_id: str, svc=Depends(service)):
 
 @app.post("/api/cases/{case_id}/validate")
 def validate_case(case_id: str, svc=Depends(service)):
-    return case_response(svc.validate_case(case_id))
+    case = svc.validate_case(case_id)
+    if case.status == "created" or case.employee_id:
+        from .notifications import send_welcome_email
+        send_welcome_email(case.data, case.employee_id, case.department)
+    return case_response(case)
 
 
 @app.post("/api/cases/{case_id}/finalize")
 def finalize_case(
     case_id: str, body: Confirm, idempotency_key: str = Header(alias="Idempotency-Key"), svc=Depends(service)
 ):
-    return case_response(svc.finalize_case(case_id, body.confirmed, idempotency_key))
+    case = svc.finalize_case(case_id, body.confirmed, idempotency_key)
+    from .notifications import send_welcome_email
+    send_welcome_email(case.data, case.employee_id, case.department)
+    return case_response(case)
+
+
+@app.post("/api/cases/{case_id}/email/welcome")
+def send_welcome_email_route(case_id: str, svc=Depends(service)):
+    case = svc.get_case(case_id)
+    svc.require_consent(case)
+    from .notifications import send_welcome_email
+    res = send_welcome_email(case.data, case.employee_id or "PENDING", case.department)
+    svc.audit(case.id, "email.welcome_sent", res)
+    svc.db.commit()
+    return res
 
 
 app.include_router(documents_router)

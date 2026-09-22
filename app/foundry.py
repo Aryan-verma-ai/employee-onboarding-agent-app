@@ -69,10 +69,12 @@ ONBOARDING ORCHESTRATION & DOCUMENT EXTRACTION:
 - Use `get_onboarding_status` to check overall workflow state and missing fields.
 - Use `validate_onboarding` to validate the case and finalize employee creation.
 - When `validate_onboarding` is executed:
-  * The system validates the case, generates a new unique Employee ID (e.g. EMP-XXXXXX), and assigns an official start working date.
+  * The system validates the case, generates a new unique Employee ID (e.g. EMP-XXXXXX), assigns an official start working date, and dispatches the official onboarding congratulations email to the person's email address.
   * ALWAYS celebrate the milestone enthusiastically! Address the employee directly by their full name (e.g., '🎉 Welcome aboard, [Name]!').
   * Clearly display their new Employee ID and assigned start working date.
+  * Explicitly confirm that their official onboarding congratulations email has been sent to their email address with their Employee ID, start date, and first-day instructions!
   * Inform them that their official employee profile is active, and they can view the full profile and download their updated Excel record on the dashboard.
+- You can also execute the `send_onboarding_welcome_email` tool to send or re-send the congratulations email to the candidate's email address.
 - Never repeat raw PAN or Aadhaar numbers in chat.
 """
 
@@ -82,12 +84,26 @@ TOOL_SCHEMAS = {
         "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     "validate_onboarding": {
-        "description": "Run deterministic validation on the onboarding case, generate Employee ID, assign start date, and create official employee profile.",
+        "description": "Run deterministic validation on the onboarding case, generate Employee ID, assign start date, create official employee profile, and send welcome email.",
         "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     "get_extracted_data": {
         "description": "Retrieve all OCR-extracted employee data and document statuses for the current case.",
         "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+    },
+    "send_onboarding_welcome_email": {
+        "description": "Send or re-send the official onboarding congratulations and welcome email to the candidate's email address with their Employee ID, start date, and onboarding instructions.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Optional recipient email address. If omitted, uses the employee's registered email from onboarding documents."
+                }
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
     },
     "search_company_knowledge": {
         "description": "Search company policies, employee handbook, benefits, leaves, work hours, IT guidelines, and onboarding rules.",
@@ -148,6 +164,7 @@ def safe_status(case: Any) -> dict:
         next_action = None
 
     data = field("data", {}) or {}
+    email_sent_to = data.get("welcome_email_sent_to") or (data.get("email") if field("status") == "created" else None)
     return {
         "status": field("status"),
         "missing_fields": [item for item in problems if not item.startswith(("conflict:", "extraction:"))],
@@ -156,6 +173,8 @@ def safe_status(case: Any) -> dict:
         "employee_name": data.get("full_name"),
         "start_date": data.get("start_date"),
         "department": field("department"),
+        "email": data.get("email"),
+        "welcome_email_sent_to": email_sent_to,
         "conflicting_fields": conflicts,
         "failed_extractions": extraction,
         "escalation_required": escalation,
@@ -329,7 +348,31 @@ class FoundryGateway:
                         raise ValueError("Tool not permitted")
                     if call.name == "validate_onboarding":
                         service.validate_case(case_id)
-                        result = safe_status(service.get_case(case_id))
+                        case = service.get_case(case_id)
+                        from .notifications import send_welcome_email
+                        email_res = send_welcome_email(case.data, case.employee_id, case.department)
+                        service.audit(case_id, "foundry.welcome_email", email_res)
+                        result = {
+                            **safe_status(case),
+                            "welcome_email": email_res,
+                        }
+                    elif call.name == "send_onboarding_welcome_email":
+                        case = service.get_case(case_id)
+                        recipient = arguments.get("email") if isinstance(arguments, dict) else None
+                        from .notifications import send_welcome_email
+                        email_res = send_welcome_email(
+                            case_data=case.data,
+                            employee_id=case.employee_id or "PENDING",
+                            department=case.department,
+                            override_recipient=recipient,
+                        )
+                        service.audit(case_id, "foundry.welcome_email", email_res)
+                        result = {
+                            "status": email_res.get("status"),
+                            "recipient": email_res.get("recipient"),
+                            "subject": email_res.get("subject"),
+                            "message": email_res.get("preview"),
+                        }
                     elif call.name == "get_extracted_data":
                         result = service.get_extracted_data(case_id)
                     elif call.name == "get_onboarding_status":
