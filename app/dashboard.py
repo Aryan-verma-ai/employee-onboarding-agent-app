@@ -49,7 +49,18 @@ def summary(case):
 @router.get("/hr", response_class=HTMLResponse)
 def dashboard_shell():
     # This shell contains no personal data. Every data endpoint validates Entra.
-    return Path(__file__).with_name("static").joinpath("dashboard.html").read_text(encoding="utf-8")
+    return (
+        Path(__file__)
+        .with_name("static")
+        .joinpath("dashboard.html")
+        .read_text(encoding="utf-8", errors="replace")
+    )
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def landing_page():
+    """Public product entry point; protected workflows remain under /hr."""
+    return Path(__file__).with_name("static").joinpath("landing.html").read_text(encoding="utf-8")
 
 
 @router.get("/api/hr/cases")
