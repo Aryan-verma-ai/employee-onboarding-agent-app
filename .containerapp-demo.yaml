@@ -17,7 +17,7 @@ properties:
         command: ["/bin/sh"]
         args:
           - "-c"
-          - "apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && git clone -b feat/azure-foundry-onboarding https://github.com/Aryan-verma-ai/employee-onboarding-agent-app.git /srv/app && cd /srv/app && git checkout 23b6b2d && sed -i 's|service = BlobServiceClient(url, credential=azure_credential())|service = BlobServiceClient.from_connection_string(os.environ[\"AZURE_STORAGE_CONNECTION_STRING\"])|' app/documents.py && pip install --no-cache-dir . && python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
+          - "apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && git clone -b feat/azure-foundry-onboarding https://github.com/Aryan-verma-ai/employee-onboarding-agent-app.git /srv/app && cd /srv/app && git checkout 2f7cbab && sed -i 's|service = BlobServiceClient(url, credential=azure_credential())|service = BlobServiceClient.from_connection_string(os.environ[\"AZURE_STORAGE_CONNECTION_STRING\"])|' app/documents.py && pip install --no-cache-dir . && python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
         env:
           - name: ENVIRONMENT
             value: production
@@ -48,13 +48,15 @@ properties:
           - name: FOUNDRY_AGENT_NAME
             value: employee-onboarding
           - name: FOUNDRY_AGENT_VERSION
-            value: "5"
+            value: "6"
           - name: FOUNDRY_AUTH_MODE
             value: api_key
           - name: AZURE_OPENAI_API_KEY
             secretRef: azure-ai-key
           - name: AZURE_DOCUMENT_INTELLIGENCE_AUTH_MODE
             value: api_key
+          - name: AZURE_DOCUMENT_INTELLIGENCE_API_KEY
+            secretRef: azure-ai-key
           - name: WORKER_TENANT_ID
             value: a8780332-fecd-4f97-81b8-3782131af31a
           - name: WORKER_SUBJECT

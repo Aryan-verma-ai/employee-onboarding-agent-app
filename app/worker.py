@@ -38,6 +38,7 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             db.rollback()  # Do not hold a transaction across the cloud call.
             result = extractor(content, document_id)
         except Exception as exc:
+            logging.getLogger(__name__).exception("Extraction failed for document %s: %s", document_id, exc)
             error = (
                 "consent_or_access_denied"
                 if getattr(exc, "status_code", None) in {403, 404}

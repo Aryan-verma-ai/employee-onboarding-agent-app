@@ -538,10 +538,10 @@
             
             const extractionStatus = (d.extraction && d.extraction.status) || d.extraction_status || 'pending';
             let statusText = extractionStatus === 'complete' ? '✅ Done' : 
-                             extractionStatus === 'pending' || extractionStatus === 'in_progress' ? '⏳ Extracting...' : 
+                             (extractionStatus === 'pending' || extractionStatus === 'in_progress' || extractionStatus === 'queued') ? '⏳ Extracting...' : 
                              extractionStatus === 'failed' ? '❌ Failed' : '📄 Uploaded';
                              
-            if (extractionStatus === 'pending' || extractionStatus === 'in_progress') {
+            if (extractionStatus === 'pending' || extractionStatus === 'in_progress' || extractionStatus === 'queued') {
                 anyExtracting = true;
             }
 
@@ -569,7 +569,12 @@
         } else if (!anyExtracting && isExtracting) {
             isExtracting = false;
             stopPolling();
-            addSystemMessage("✅ Extraction complete — profile updated");
+            const failedDocs = docs.filter(d => (d.extraction && d.extraction.status === 'failed'));
+            if (failedDocs.length > 0) {
+                addSystemMessage("❌ Extraction failed for: " + failedDocs.map(d => d.filename).join(', '));
+            } else {
+                addSystemMessage("✅ Extraction complete — profile updated");
+            }
             await refreshProfile(); // Refresh profile to get new OCR data
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {

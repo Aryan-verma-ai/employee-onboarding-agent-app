@@ -143,16 +143,11 @@ def document_credential(endpoint):
         raise ValueError("Unsupported Document Intelligence authentication mode")
     from azure.core.credentials import AzureKeyCredential
 
-    key = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_API_KEY")
-    if not key:
-        target = urlparse(endpoint)
-        foundry = urlparse(os.getenv("FOUNDRY_PROJECT_ENDPOINT", ""))
-        if target.scheme != "https" or target.hostname != foundry.hostname or not foundry.hostname:
-            raise ValueError("Shared API key requires the same HTTPS Foundry resource host")
-        key = os.getenv("AZURE_OPENAI_API_KEY")
+    key = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
     if not key:
         raise ValueError("Document Intelligence API key is not configured")
     return AzureKeyCredential(key)
+
 
 
 def extract_document(content: bytes, document_id: str) -> dict:
