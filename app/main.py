@@ -61,16 +61,25 @@ class Confirm(BaseModel):
 
 
 def case_response(case):
+    full_name = (case.data or {}).get("full_name") or "Employee"
+    start_date = (case.data or {}).get("start_date")
+    onboarding_message = (
+        f"🎉 Welcome aboard, {full_name}! Your onboarding is complete and employee profile is active. "
+        f"Your official Employee ID is {case.employee_id}, and your assigned start date is {start_date}."
+        if case.employee_id else None
+    )
     return {
         "id": case.id,
         "department": case.department,
         "status": case.status,
         "data": case.data,
+        "start_date": start_date,
         "missing_fields": case.missing_fields,
         "validation_outcomes": case.validation_outcomes,
         "consent_policy_version": case.consent_policy_version,
         "consent_withdrawn_at": case.consent_withdrawn_at,
         "employee_id": case.employee_id,
+        "onboarding_message": onboarding_message,
         "created_at": case.created_at,
     }
 
@@ -256,8 +265,9 @@ def export_employee_profile(case_id: str, svc=Depends(service)):
     profile_fields = [
         ("Employee ID", case.employee_id or "Pending creation"),
         ("Case ID", case.id),
-        ("Department", case.department),
-        ("Onboarding Status", case.status.replace("-", " ").title()),
+        ("Department", case.department.upper() if case.department else ""),
+        ("Onboarding Status", "Active / Created" if case.status == "created" else case.status.replace("-", " ").title()),
+        ("Start Working Date", data.get("start_date", "Pending finalization")),
         ("", ""),  # spacer
         ("Full Name", data.get("full_name", "")),
         ("Email", data.get("email", "")),

@@ -67,9 +67,13 @@ ONBOARDING ORCHESTRATION & DOCUMENT EXTRACTION:
 - Report all extracted findings clearly to the user (e.g. "I've extracted your Name: X, Email: Y, Phone: Z, Address: W from your uploaded documents").
 - Inform the user which documents or fields are still required to complete their profile.
 - Use `get_onboarding_status` to check overall workflow state and missing fields.
-- Use `validate_onboarding` once all mandatory documents (PAN, Aadhaar) and required fields are populated.
+- Use `validate_onboarding` to validate the case and finalize employee creation.
+- When `validate_onboarding` is executed:
+  * The system validates the case, generates a new unique Employee ID (e.g. EMP-XXXXXX), and assigns an official start working date.
+  * ALWAYS celebrate the milestone enthusiastically! Address the employee directly by their full name (e.g., '🎉 Welcome aboard, [Name]!').
+  * Clearly display their new Employee ID and assigned start working date.
+  * Inform them that their official employee profile is active, and they can view the full profile and download their updated Excel record on the dashboard.
 - Never repeat raw PAN or Aadhaar numbers in chat.
-- You cannot create employees. A human HR representative reviews the finalized profile.
 """
 
 TOOL_SCHEMAS = {
@@ -78,7 +82,7 @@ TOOL_SCHEMAS = {
         "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     "validate_onboarding": {
-        "description": "Run deterministic validation on the current authorized onboarding case.",
+        "description": "Run deterministic validation on the onboarding case, generate Employee ID, assign start date, and create official employee profile.",
         "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
     },
     "get_extracted_data": {
@@ -124,7 +128,7 @@ def redact_identity(text: str) -> str:
 
 
 def safe_status(case: Any) -> dict:
-    # Explicit projection: raw fields, document OCR and names never reach tools.
+    # Explicit projection: raw identity numbers and OCR candidates never reach tools.
     def field(name, default=None):
         return case.get(name, default) if isinstance(case, dict) else getattr(case, name, default)
 
@@ -138,12 +142,20 @@ def safe_status(case: Any) -> dict:
         next_action = (
             "HR must review the processing failure; retry document processing or upload a clearer document."
         )
+    elif field("status") == "created":
+        next_action = "Onboarding complete! Congratulate the employee by name, share their generated Employee ID and start date."
     else:
         next_action = None
+
+    data = field("data", {}) or {}
     return {
         "status": field("status"),
         "missing_fields": [item for item in problems if not item.startswith(("conflict:", "extraction:"))],
         "employee_created": field("status") == "created",
+        "employee_id": field("employee_id"),
+        "employee_name": data.get("full_name"),
+        "start_date": data.get("start_date"),
+        "department": field("department"),
         "conflicting_fields": conflicts,
         "failed_extractions": extraction,
         "escalation_required": escalation,

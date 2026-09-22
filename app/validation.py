@@ -3,9 +3,9 @@
 import re
 
 DEPARTMENTS = {"engineering", "hr", "finance", "sales", "operations"}
-REQUIRED_FIELDS = ("full_name", "email", "phone", "pan", "aadhaar")
-ALLOWED_FIELDS = ("full_name", "email", "phone", "pan", "aadhaar", "address", "dob")
-REQUIRED_DOCUMENTS = ("pan", "aadhaar")
+REQUIRED_FIELDS = ("full_name", "email", "phone")
+ALLOWED_FIELDS = ("full_name", "email", "phone", "pan", "aadhaar", "address", "dob", "start_date")
+REQUIRED_DOCUMENTS = ()
 
 
 def validate_record(data: dict, department: str) -> list[str]:

@@ -129,6 +129,21 @@
             <span id="case-status-badge" class="badge received">Received</span>
         </div>
 
+        <!-- Onboarding Complete Celebration Card -->
+        <div id="onboarding-success-card" class="hidden" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border: 2px solid #4caf50; border-radius: 8px; padding: 12px; margin: 10px 0 15px 0; text-align: center;">
+            <div style="font-size: 1.1em; font-weight: bold; color: #2e7d32; margin-bottom: 6px;">🎉 Onboarding Complete!</div>
+            <div id="success-welcome-msg" style="font-size: 0.9em; color: #1b5e20; margin-bottom: 10px; font-weight: 500;"></div>
+            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Official Employee ID</div>
+                <div id="success-emp-id" style="font-size: 1.3em; font-weight: 800; color: #0078d4; letter-spacing: 1px;"></div>
+            </div>
+            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Start Working Date</div>
+                <div id="success-start-date" style="font-size: 1.05em; font-weight: 700; color: #333;"></div>
+            </div>
+            <button onclick="openFullProfileModal()" style="width: 100%; font-size: 0.9em; padding: 8px; background: #2e7d32; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;">📋 View Full Employee Profile</button>
+        </div>
+
         <div id="profile-photo-container" style="text-align: center; margin: 10px 0 15px 0;">
             <div id="profile-photo-placeholder" style="width: 70px; height: 70px; border-radius: 50%; background: #e9ecef; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #6c757d; border: 2px dashed #ced4da;">👤</div>
             <img id="profile-photo-img" src="" alt="Employee Photo" class="hidden" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; margin: 0 auto; border: 2px solid #0078d4;">
@@ -204,6 +219,44 @@
                 <!-- Populated via API -->
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Full Employee Profile Detailed Modal -->
+<div id="full-profile-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+    <div style="background: white; border-radius: 12px; width: 92%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: 25px; box-shadow: 0 12px 36px rgba(0,0,0,0.3); border-top: 5px solid #0078d4;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 16px;">
+            <div style="font-size: 1.25em; font-weight: bold; color: #12283d;">👤 Official Employee Profile</div>
+            <button onclick="closeFullProfileModal()" style="background: none; border: none; font-size: 1.6em; cursor: pointer; color: #888; line-height: 1;">&times;</button>
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div id="modal-photo-placeholder" style="width: 80px; height: 80px; border-radius: 50%; background: #e9ecef; margin: 0 auto 10px auto; display: flex; align-items: center; justify-content: center; font-size: 36px; color: #6c757d; border: 2px dashed #ced4da;">👤</div>
+            <img id="modal-photo-img" src="" alt="Employee Photo" class="hidden" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 10px auto; border: 3px solid #0078d4; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+            <h2 id="modal-emp-name" style="margin: 0 0 6px 0; color: #12283d; font-size: 1.4em;"></h2>
+            <div style="display: inline-block; background: #0078d4; color: white; padding: 5px 14px; border-radius: 20px; font-weight: 800; font-size: 0.95em; letter-spacing: 0.5px;">
+                Employee ID: <span id="modal-emp-id-badge"></span>
+            </div>
+        </div>
+
+        <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 18px; border: 1px solid #e2e8f0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569; width: 42%;">Start Working Date:</td><td id="modal-start-date" style="padding: 9px 0; font-weight: 700; color: #166534;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Department:</td><td id="modal-dept" style="padding: 9px 0; text-transform: uppercase; font-weight: 600; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Email Address:</td><td id="modal-email" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Phone Number:</td><td id="modal-phone" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">PAN Card:</td><td id="modal-pan" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Aadhaar Number:</td><td id="modal-aadhaar" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Date of Birth:</td><td id="modal-dob" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Residential Address:</td><td id="modal-address" style="padding: 9px 0; color: #1e293b;"></td></tr>
+                <tr><td style="padding: 9px 0; font-weight: 600; color: #475569;">Onboarding Status:</td><td id="modal-status" style="padding: 9px 0; color: #166534; font-weight: 700;">✅ Active / Verified</td></tr>
+            </table>
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+            <button onclick="exportProfile()" class="btn-primary" style="background: #0078d4; padding: 8px 16px;">📥 Export Profile (Excel)</button>
+            <button onclick="closeFullProfileModal()" class="btn-secondary" style="padding: 8px 16px;">Close</button>
+        </div>
     </div>
 </div>
 
@@ -349,7 +402,8 @@
         { key: 'pan', label: 'PAN' },
         { key: 'aadhaar', label: 'Aadhaar' },
         { key: 'dob', label: 'Date of Birth' },
-        { key: 'address', label: 'Address' }
+        { key: 'address', label: 'Address' },
+        { key: 'start_date', label: 'Start Date' }
     ];
 
     // --- Dashboard UI Logic ---
@@ -365,25 +419,23 @@
         document.getElementById('btn-back-hr').classList.add('hidden');
         currentCaseId = null;
         stopPolling();
-        document.getElementById('chat-history').innerHTML = '<div class="msg agent">🤖 Welcome! I\'m your onboarding assistant. Upload PAN card, Aadhaar, resume, and photo to get started.</div>';
     }
 
     async function createNewCase() {
+        const dept = document.getElementById('new-dept').value;
+        const consent = document.getElementById('new-consent').checked;
+        if (!consent) return alert("Consent required to proceed.");
+        
         run(async () => {
-            const dept = document.getElementById('new-dept').value;
-            const consent = document.getElementById('new-consent').checked;
-            
             const caseData = await api('/api/cases', {
                 method: 'POST',
-                body: { department: dept, consent: consent }
+                body: { department: dept, consent: true }
             });
-            
             currentCaseId = caseData.id;
             showWorkspace();
             await refreshProfile();
+            addSystemMessage("Case created. Initializing Foundry Agent...");
             
-            // Auto greeting trigger
-            addSystemMessage("Case created. Connecting to agent...");
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
                     method: 'POST',
@@ -415,14 +467,26 @@
         if (!currentCaseId) return;
         
         const caseData = await api(`/api/cases/${currentCaseId}`);
+        window._currentCaseData = caseData;
         const statusBadge = document.getElementById('case-status-badge');
         statusBadge.innerText = caseData.status;
         statusBadge.className = `badge ${caseData.status}`;
 
+        const data = caseData.data || {};
+
+        // Render Onboarding Complete Celebration Card if employee_id exists
+        if (caseData.employee_id) {
+            document.getElementById('onboarding-success-card').classList.remove('hidden');
+            document.getElementById('success-emp-id').innerText = caseData.employee_id;
+            document.getElementById('success-start-date').innerText = data.start_date || caseData.start_date || 'Assigned';
+            document.getElementById('success-welcome-msg').innerText = caseData.onboarding_message || `Welcome to the team, ${data.full_name || 'Employee'}!`;
+        } else {
+            document.getElementById('onboarding-success-card').classList.add('hidden');
+        }
+
         // Render Fields
         const fieldsContainer = document.getElementById('profile-fields');
         fieldsContainer.innerHTML = '';
-        const data = caseData.data || {};
         
         PROFILE_FIELDS.forEach(f => {
             const val = data[f.key] || '';
@@ -604,10 +668,57 @@
     // --- Actions ---
     async function validateCase() {
         run(async () => {
-            await api(`/api/cases/${currentCaseId}/validate`, { method: 'POST' });
+            const res = await api(`/api/cases/${currentCaseId}/validate`, { method: 'POST' });
             await refreshProfile();
-            addSystemMessage("Case validated.");
+            const empId = res.employee_id || (res.data && res.data.employee_id) || '';
+            const startDate = res.start_date || (res.data && res.data.start_date) || '';
+            addSystemMessage(`🎉 Onboarding validated! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}`);
+            try {
+                const resp = await api(`/api/cases/${currentCaseId}/chat`, {
+                    method: 'POST',
+                    body: { message: "My case has been validated. Please provide my new Employee ID, assigned start date, and official welcome message." }
+                });
+                appendChatMessage('user', "My case has been validated. What is my Employee ID and start date?");
+                appendChatMessage('agent', resp.response || resp.message || res.onboarding_message || "Congratulations! Onboarding is complete.");
+            } catch(e) {
+                console.warn("Could not query agent on validation", e);
+            }
         });
+    }
+
+    function openFullProfileModal() {
+        if (!window._currentCaseData) return;
+        const c = window._currentCaseData;
+        const d = c.data || {};
+        document.getElementById('modal-emp-name').innerText = d.full_name || 'Employee';
+        document.getElementById('modal-emp-id-badge').innerText = c.employee_id || 'Pending ID';
+        document.getElementById('modal-start-date').innerText = d.start_date || c.start_date || 'Assigned';
+        document.getElementById('modal-dept').innerText = c.department || 'General';
+        document.getElementById('modal-email').innerText = d.email || '—';
+        document.getElementById('modal-phone').innerText = d.phone || '—';
+        document.getElementById('modal-pan').innerText = d.pan ? d.pan : '—';
+        document.getElementById('modal-aadhaar').innerText = d.aadhaar ? d.aadhaar : '—';
+        document.getElementById('modal-dob').innerText = d.dob || '—';
+        document.getElementById('modal-address').innerText = d.address || '—';
+        document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active / Onboarded' : c.status;
+        
+        const photoImg = document.getElementById('profile-photo-img');
+        const modalPhoto = document.getElementById('modal-photo-img');
+        const modalPlaceholder = document.getElementById('modal-photo-placeholder');
+        if (photoImg && !photoImg.classList.contains('hidden') && photoImg.src) {
+            modalPhoto.src = photoImg.src;
+            modalPhoto.classList.remove('hidden');
+            modalPlaceholder.classList.add('hidden');
+        } else {
+            modalPhoto.classList.add('hidden');
+            modalPlaceholder.classList.remove('hidden');
+        }
+        
+        document.getElementById('full-profile-modal').classList.remove('hidden');
+    }
+
+    function closeFullProfileModal() {
+        document.getElementById('full-profile-modal').classList.add('hidden');
     }
 
     async function finalizeCase() {
