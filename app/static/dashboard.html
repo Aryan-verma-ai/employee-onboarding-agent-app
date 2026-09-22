@@ -209,34 +209,47 @@
 
     async function initializeSignIn() {
         try {
-            const res = await fetch('/api/auth/config');
+            const res = await fetch('/api/auth/config', { cache: 'no-store' });
             if (!res.ok) throw new Error("Could not fetch MSAL config");
             const config = await res.json();
-            
+            window._authConfig = config;
+
+            // Development mode — skip MSAL entirely
+            if (config.development) {
+                document.getElementById('auth-status').innerText = 'Development mode';
+                document.getElementById('user-name').innerText = 'Dev User';
+                authAccount = { username: 'dev', name: 'Dev User' };
+                return true;
+            }
+            if (!config.configured) {
+                document.getElementById('auth-status').innerText = 'Auth not configured';
+                return false;
+            }
+
             authClient = new msal.PublicClientApplication({
                 auth: {
                     clientId: config.client_id,
-                    authority: `https://login.microsoftonline.com/${config.tenant_id}`,
-                    redirectUri: window.location.origin + '/hr'
+                    authority: config.authority,
+                    redirectUri: config.redirect_uri
                 },
                 cache: {
-                    cacheLocation: "sessionStorage",
-                    storeAuthStateInCookie: false,
+                    cacheLocation: "memoryStorage",
+                    temporaryCacheLocation: "sessionStorage"
                 }
             });
             await authClient.initialize();
             
-            const response = await authClient.handleRedirectPromise();
-            if (response) {
-                authAccount = response.account;
+            // Try silent sign-in first
+            const accounts = authClient.getAllAccounts();
+            if (accounts.length > 0) {
+                authAccount = accounts[0];
             } else {
-                const accounts = authClient.getAllAccounts();
-                if (accounts.length > 0) {
-                    authAccount = accounts[0];
-                } else {
-                    authClient.loginRedirect({ scopes: ['User.Read'] });
-                    return false;
-                }
+                // Popup sign-in
+                const response = await authClient.loginPopup({
+                    scopes: [config.scope],
+                    prompt: 'select_account'
+                });
+                authAccount = response.account;
             }
             
             document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
@@ -244,22 +257,27 @@
             return true;
         } catch (error) {
             console.error("Auth error", error);
-            document.getElementById('auth-status').innerText = 'Auth Failed';
+            document.getElementById('auth-status').innerText = 'Sign-in required';
             return false;
         }
     }
 
     async function authHeaders() {
-        if (!authAccount) throw new Error("Not authenticated");
+        // Development mode — no auth headers needed
+        if (window._authConfig && window._authConfig.development) return {};
+        if (!authAccount || !authClient) throw new Error("Not authenticated. Please refresh the page.");
         try {
             const response = await authClient.acquireTokenSilent({
-                scopes: ['User.Read'],
+                scopes: [window._authConfig.scope],
                 account: authAccount
             });
             return { 'Authorization': `Bearer ${response.accessToken}` };
         } catch (error) {
             if (error instanceof msal.InteractionRequiredAuthError) {
-                authClient.acquireTokenRedirect({ scopes: ['User.Read'] });
+                const response = await authClient.acquireTokenPopup({
+                    scopes: [window._authConfig.scope]
+                });
+                return { 'Authorization': `Bearer ${response.accessToken}` };
             }
             throw error;
         }
