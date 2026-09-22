@@ -36,6 +36,7 @@ def safe_cell(value):
 
 def summary(case):
     return {
+        "id": case.id,
         "case_id": case.id,
         "employee_id": case.employee_id,
         "department": case.department,
@@ -43,6 +44,7 @@ def summary(case):
         "full_name": case.data.get("full_name", ""),
         "email": case.data.get("email", ""),
         "missing_fields": case.missing_fields,
+        "created_at": case.created_at.isoformat() if case.created_at else "",
     }
 
 

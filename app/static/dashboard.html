@@ -341,8 +341,8 @@
         { key: 'full_name', label: 'Full Name' },
         { key: 'email', label: 'Email' },
         { key: 'phone', label: 'Phone' },
-        { key: 'pan_number', label: 'PAN' },
-        { key: 'aadhaar_number', label: 'Aadhaar' }
+        { key: 'pan', label: 'PAN' },
+        { key: 'aadhaar', label: 'Aadhaar' }
     ];
 
     // --- Dashboard UI Logic ---
@@ -368,7 +368,7 @@
             
             const caseData = await api('/api/cases', {
                 method: 'POST',
-                body: { department: dept, consent_received: consent }
+                body: { department: dept, consent: consent }
             });
             
             currentCaseId = caseData.id;
@@ -376,13 +376,18 @@
             await refreshProfile();
             
             // Auto greeting trigger
-            addSystemMessage("Case created. Starting chat...");
-            const resp = await api(`/api/cases/${currentCaseId}/chat`, {
-                method: 'POST',
-                body: { message: "I'm starting a new employee onboarding. What documents do you need?" }
-            });
-            appendChatMessage('user', "I'm starting a new employee onboarding. What documents do you need?");
-            appendChatMessage('agent', resp.response || resp.message || "Message received");
+            addSystemMessage("Case created. Connecting to agent...");
+            try {
+                const resp = await api(`/api/cases/${currentCaseId}/chat`, {
+                    method: 'POST',
+                    body: { message: "I'm starting a new employee onboarding. What documents do you need?" }
+                });
+                appendChatMessage('user', "I'm starting a new employee onboarding. What documents do you need?");
+                appendChatMessage('agent', resp.response || resp.message || "Message received");
+            } catch (chatErr) {
+                console.warn("Initial chat greeting error:", chatErr);
+                addSystemMessage("Agent ready. Upload your PAN card, Aadhaar, or resume to begin.");
+            }
         });
     }
 
@@ -410,9 +415,10 @@
         // Render Fields
         const fieldsContainer = document.getElementById('profile-fields');
         fieldsContainer.innerHTML = '';
+        const data = caseData.data || {};
         
         PROFILE_FIELDS.forEach(f => {
-            const val = (caseData.employee_profile && caseData.employee_profile[f.key]) || '';
+            const val = data[f.key] || '';
             const row = document.createElement('div');
             row.className = 'field-row';
             
@@ -427,13 +433,7 @@
         });
 
         // Compute Missing Fields
-        const missing = [];
-        PROFILE_FIELDS.forEach(f => {
-            if (!caseData.employee_profile || !caseData.employee_profile[f.key]) {
-                missing.push(f.key);
-            }
-        });
-        
+        const missing = caseData.missing_fields || [];
         const missingSec = document.getElementById('missing-section');
         if (missing.length > 0) {
             missingSec.classList.remove('hidden');
@@ -485,8 +485,8 @@
             if (!input) return;
             const newVal = input.value.trim();
             
-            const patchObj = { employee_profile: {} };
-            patchObj.employee_profile[key] = newVal;
+            const patchObj = { data: {} };
+            patchObj.data[key] = newVal;
             
             await api(`/api/cases/${currentCaseId}`, {
                 method: 'PATCH',
@@ -511,18 +511,19 @@
             const item = document.createElement('div');
             item.className = 'doc-item';
             
-            let statusText = d.extraction_status === 'complete' ? '✅ Done' : 
-                             d.extraction_status === 'pending' || d.extraction_status === 'in_progress' ? '⏳ Extracting...' : 
-                             d.extraction_status === 'failed' ? '❌ Failed' : '📄 Uploaded';
+            const extractionStatus = (d.extraction && d.extraction.status) || d.extraction_status || 'pending';
+            let statusText = extractionStatus === 'complete' ? '✅ Done' : 
+                             extractionStatus === 'pending' || extractionStatus === 'in_progress' ? '⏳ Extracting...' : 
+                             extractionStatus === 'failed' ? '❌ Failed' : '📄 Uploaded';
                              
-            if (d.extraction_status === 'pending' || d.extraction_status === 'in_progress') {
+            if (extractionStatus === 'pending' || extractionStatus === 'in_progress') {
                 anyExtracting = true;
             }
 
             item.innerHTML = `
                 <div>
-                    <strong>${d.doc_type || 'Unknown'}</strong><br>
-                    <span style="font-size:0.8em; color:#666">${d.filename}</span>
+                    <strong>${(d.doc_type || 'Unknown').toUpperCase()}</strong><br>
+                    <span style="font-size:0.8em; color:#666">${d.filename || ('Document v' + d.version)}</span>
                 </div>
                 <div class="doc-status">${statusText}</div>
             `;
@@ -538,6 +539,16 @@
             stopPolling();
             addSystemMessage("✅ Extraction complete — profile updated");
             await refreshProfile(); // Refresh profile to get new OCR data
+            try {
+                const resp = await api(`/api/cases/${currentCaseId}/chat`, {
+                    method: 'POST',
+                    body: { message: "Documents have been processed. What did you extract and what is still missing?" }
+                });
+                appendChatMessage('user', "What did you extract and what is still missing?");
+                appendChatMessage('agent', resp.response || resp.message || "Extraction complete.");
+            } catch(e) {
+                console.warn("Could not query agent on extraction complete", e);
+            }
         }
     }
 
@@ -567,9 +578,14 @@
         if (!hrChecked) return alert("HR must review before creating employee");
         
         run(async () => {
-            await api(`/api/cases/${currentCaseId}/finalize`, { method: 'POST' });
+            const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : ('idemp-' + Date.now());
+            await api(`/api/cases/${currentCaseId}/finalize`, {
+                method: 'POST',
+                headers: { 'Idempotency-Key': idempotencyKey },
+                body: { confirmed: true }
+            });
             await refreshProfile();
-            addSystemMessage("Employee created successfully!");
+            addSystemMessage("🎉 Employee created successfully!");
             loadHrQueue();
         });
     }
@@ -577,9 +593,9 @@
     async function withdrawConsent() {
         if (!confirm("Are you sure you want to withdraw consent? This will fail the case.")) return;
         run(async () => {
-            await api(`/api/cases/${currentCaseId}`, {
-                method: 'PATCH',
-                body: { consent_received: false }
+            await api(`/api/cases/${currentCaseId}/consent/withdraw`, {
+                method: 'POST',
+                body: { confirmed: true }
             });
             await refreshProfile();
             addSystemMessage("Consent withdrawn. Case halted.");
@@ -602,15 +618,16 @@
 
     async function downloadConfirmation() {
         run(async () => {
-            const blob = await api(`/api/cases/${currentCaseId}/confirmation/export`, { responseType: 'blob' });
+            const data = await api(`/api/cases/${currentCaseId}/confirmation`);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Confirmation_${currentCaseId}.pdf`;
+            a.download = `Confirmation_${currentCaseId}.json`;
             document.body.appendChild(a);
             a.click();
             a.remove();
-            window.URL.revokeObjectURL(url);
+            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
         });
     }
 
@@ -720,14 +737,18 @@
             tbody.innerHTML = '';
             
             cases.forEach(c => {
+                const id = c.case_id || c.id || '';
+                const shortId = id.length > 8 ? id.substring(0, 8) + '...' : (id || '—');
+                const name = c.full_name || (c.employee_profile && c.employee_profile.full_name) || '—';
+                const created = c.created_at ? new Date(c.created_at).toLocaleString() : '—';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${c.id.substring(0, 8)}...</td>
+                    <td>${shortId}</td>
                     <td><span class="badge ${c.status}">${c.status}</span></td>
-                    <td>${(c.employee_profile && c.employee_profile.full_name) ? c.employee_profile.full_name : '—'}</td>
+                    <td>${name}</td>
                     <td>${c.department || '—'}</td>
-                    <td>${new Date(c.created_at).toLocaleString()}</td>
-                    <td><button class="btn-secondary" onclick="resumeCase('${c.id}')">Review</button></td>
+                    <td>${created}</td>
+                    <td><button class="btn-secondary" onclick="resumeCase('${id}')">Review</button></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -736,7 +757,7 @@
 
     async function exportQueue(format) {
         run(async () => {
-            const blob = await api(`/api/hr/cases/export?format=${format}`, { responseType: 'blob' });
+            const blob = await api(`/api/hr/export?format=${format}`, { responseType: 'blob' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -744,7 +765,7 @@
             document.body.appendChild(a);
             a.click();
             a.remove();
-            window.URL.revokeObjectURL(url);
+            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
         });
     }
 

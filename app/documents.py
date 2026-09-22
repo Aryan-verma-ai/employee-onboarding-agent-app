@@ -108,10 +108,12 @@ def list_documents(
     return [
         {
             "id": doc.id,
+            "filename": doc.filename,
             "doc_type": doc.doc_type,
             "version": doc.version,
             "scan_status": doc.scan_status,
             "extraction": doc.extraction,
+            "extraction_status": (doc.extraction or {}).get("status", "pending"),
         }
         for doc in docs
     ]
