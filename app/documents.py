@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -224,6 +224,7 @@ def extract(
 @router.post("/{case_id}/documents/auto", status_code=201)
 async def auto_upload_and_extract(
     case_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_principal),
@@ -251,8 +252,14 @@ async def auto_upload_and_extract(
     if existing:
         return {"id": existing.id, "version": existing.version, "doc_type": existing.doc_type, "duplicate": True}
 
-    # Use "pending" as the initial type — worker will auto-classify after OCR
-    doc_type = "other"
+    # Initial type hint
+    fn_lower = (file.filename or "").lower()
+    ct_lower = (file.content_type or "").lower()
+    if any(k in fn_lower for k in ("photo", "pic", "headshot", "profile", "avatar")) or ct_lower.startswith("image/"):
+        doc_type = "photograph"
+    else:
+        doc_type = "other"
+
     version = (
         db.scalar(
             select(func.max(Document.version)).where(
@@ -291,6 +298,12 @@ async def auto_upload_and_extract(
         service.transition(case, "extracting")
     service.transition(case, "extracting")
     db.commit()
+
+    # Trigger immediate extraction in background task
+    from .db import engine
+    from .worker import process_one
+    background_tasks.add_task(process_one, engine, principal)
+
     return {
         "id": document_id,
         "version": version,

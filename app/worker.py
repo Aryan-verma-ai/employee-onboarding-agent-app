@@ -74,15 +74,14 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             from .extraction import classify_document
 
             candidates = result.get("candidates", [])
-            if document.doc_type == "other" and candidates:
-                detected_type = classify_document(candidates)
-                if detected_type != "other":
-                    document.doc_type = detected_type
-                    service.audit(
-                        case_id,
-                        "document.auto_classified",
-                        {"document_id": document_id, "detected_type": detected_type},
-                    )
+            detected_type = classify_document(candidates, filename=document.filename, content_type=document.content_type)
+            if detected_type != "other" or document.doc_type == "other":
+                document.doc_type = detected_type
+                service.audit(
+                    case_id,
+                    "document.auto_classified",
+                    {"document_id": document_id, "detected_type": detected_type},
+                )
 
             # ── Auto-merge high-confidence accepted values into case.data ──
             accepted = result.get("accepted", {})

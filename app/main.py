@@ -20,6 +20,27 @@ async def lifespan(app):
     validate_configuration()
     if settings.environment == "development":
         Base.metadata.create_all(engine)
+
+    import os
+    import threading
+    import time
+    from .auth import Principal
+    from .worker import process_one
+
+    def _worker_loop():
+        tenant = os.getenv("WORKER_TENANT_ID", "a8780332-fecd-4f97-81b8-3782131af31a")
+        subject = os.getenv("WORKER_SUBJECT", "onboarding-worker")
+        principal = Principal(subject, tenant, frozenset({"HR"}))
+        while True:
+            try:
+                processed = process_one(engine, principal)
+                if not processed:
+                    time.sleep(1.0)
+            except Exception:
+                time.sleep(2.0)
+
+    worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="extraction-worker-thread")
+    worker_thread.start()
     yield
 
 
@@ -99,14 +120,14 @@ def update_case(case_id: str, body: UpdateCase, svc=Depends(service)):
     from sqlalchemy import select
 
     from .models import Document
-    from .validation import REQUIRED_FIELDS
+    from .validation import ALLOWED_FIELDS, REQUIRED_FIELDS
 
     case = svc.get_case(case_id)
     svc.require_consent(case)
     case.validation_outcomes = []
     if case.status == "created":
         raise HTTPException(409, "Completed cases are immutable")
-    if set(body.data) - set(REQUIRED_FIELDS) or any(len(value) > 500 for value in body.data.values()):
+    if set(body.data) - set(ALLOWED_FIELDS) or any(len(value) > 500 for value in body.data.values()):
         raise HTTPException(422, "Unsupported field or excessive field length")
     if body.reviewed_document_ids and not svc.principal.is_hr:
         raise HTTPException(403, "Only HR can attest document review")
@@ -243,6 +264,8 @@ def export_employee_profile(case_id: str, svc=Depends(service)):
         ("Phone", data.get("phone", "")),
         ("PAN Number", data.get("pan", "")),
         ("Aadhaar Number", data.get("aadhaar", "")),
+        ("Date of Birth", data.get("dob", "")),
+        ("Address", data.get("address", "")),
         ("", ""),  # spacer
         ("Created At", case.created_at.strftime("%Y-%m-%d %H:%M UTC") if case.created_at else ""),
     ]

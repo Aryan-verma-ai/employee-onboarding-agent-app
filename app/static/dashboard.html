@@ -128,6 +128,11 @@
             <strong>👤 EMPLOYEE PROFILE</strong>
             <span id="case-status-badge" class="badge received">Received</span>
         </div>
+
+        <div id="profile-photo-container" style="text-align: center; margin: 10px 0 15px 0;">
+            <div id="profile-photo-placeholder" style="width: 70px; height: 70px; border-radius: 50%; background: #e9ecef; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #6c757d; border: 2px dashed #ced4da;">👤</div>
+            <img id="profile-photo-img" src="" alt="Employee Photo" class="hidden" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; margin: 0 auto; border: 2px solid #0078d4;">
+        </div>
         
         <div class="section-title">Details</div>
         <div id="profile-fields">
@@ -342,7 +347,9 @@
         { key: 'email', label: 'Email' },
         { key: 'phone', label: 'Phone' },
         { key: 'pan', label: 'PAN' },
-        { key: 'aadhaar', label: 'Aadhaar' }
+        { key: 'aadhaar', label: 'Aadhaar' },
+        { key: 'dob', label: 'Date of Birth' },
+        { key: 'address', label: 'Address' }
     ];
 
     // --- Dashboard UI Logic ---
@@ -506,8 +513,26 @@
         docList.innerHTML = '';
         
         let anyExtracting = false;
+        let hasPhoto = false;
+
+        const typeLabels = {
+            'resume': '📄 Resume',
+            'pan': '💳 PAN Card',
+            'aadhaar': '🆔 Aadhaar Card',
+            'photograph': '📷 Photograph',
+            'other': '📁 Document'
+        };
         
         docs.forEach(d => {
+            if (d.doc_type === 'photograph') {
+                hasPhoto = true;
+                const img = document.getElementById('profile-photo-img');
+                const placeholder = document.getElementById('profile-photo-placeholder');
+                img.src = `/api/cases/${currentCaseId}/documents/${d.id}/download`;
+                img.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+            }
+
             const item = document.createElement('div');
             item.className = 'doc-item';
             
@@ -520,15 +545,22 @@
                 anyExtracting = true;
             }
 
+            const label = typeLabels[d.doc_type] || (d.doc_type ? d.doc_type.toUpperCase() : '📁 DOCUMENT');
+
             item.innerHTML = `
                 <div>
-                    <strong>${(d.doc_type || 'Unknown').toUpperCase()}</strong><br>
+                    <strong>${label}</strong><br>
                     <span style="font-size:0.8em; color:#666">${d.filename || ('Document v' + d.version)}</span>
                 </div>
                 <div class="doc-status">${statusText}</div>
             `;
             docList.appendChild(item);
         });
+
+        if (!hasPhoto) {
+            document.getElementById('profile-photo-img').classList.add('hidden');
+            document.getElementById('profile-photo-placeholder').classList.remove('hidden');
+        }
 
         // Manage polling logic based on status
         if (anyExtracting && !isExtracting) {
@@ -554,7 +586,7 @@
 
     function startPolling() {
         if (pollInterval) clearInterval(pollInterval);
-        pollInterval = setInterval(refreshDocuments, 3000);
+        pollInterval = setInterval(refreshDocuments, 2000);
     }
 
     function stopPolling() {

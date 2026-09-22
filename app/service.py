@@ -158,19 +158,30 @@ class OnboardingService:
         ).all()
 
         # Which fields are populated in case.data?
-        from .validation import REQUIRED_FIELDS
+        from .validation import ALLOWED_FIELDS, REQUIRED_FIELDS
 
-        populated_fields = [f for f in REQUIRED_FIELDS if case.data.get(f)]
+        populated_fields = [f for f in ALLOWED_FIELDS if case.data.get(f)]
         missing_fields = [f for f in REQUIRED_FIELDS if not case.data.get(f)]
+
+        extracted_profile = {
+            "full_name": case.data.get("full_name") or None,
+            "email": case.data.get("email") or None,
+            "phone": case.data.get("phone") or None,
+            "address": case.data.get("address") or None,
+            "dob": case.data.get("dob") or None,
+            "has_pan": bool(case.data.get("pan")),
+            "has_aadhaar": bool(case.data.get("aadhaar")),
+        }
 
         doc_summaries = []
         for doc in documents:
             summary = {
                 "doc_type": doc.doc_type,
+                "filename": doc.filename,
                 "extraction_status": doc.extraction.get("status", "pending"),
                 "scan_status": doc.scan_status,
             }
-            # Report which fields were extracted from this document (not values)
+            # Report which fields were extracted from this document
             candidates = doc.extraction.get("candidates", [])
             if candidates:
                 summary["fields_found"] = sorted({c["field"] for c in candidates})
@@ -186,6 +197,7 @@ class OnboardingService:
             "case_status": case.status,
             "populated_fields": populated_fields,
             "missing_fields": missing_fields,
+            "extracted_profile": extracted_profile,
             "documents": doc_summaries,
             "employee_created": case.status == "created",
             "employee_id": case.employee_id,

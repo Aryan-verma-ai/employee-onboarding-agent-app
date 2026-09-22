@@ -4,6 +4,7 @@ import re
 
 DEPARTMENTS = {"engineering", "hr", "finance", "sales", "operations"}
 REQUIRED_FIELDS = ("full_name", "email", "phone", "pan", "aadhaar")
+ALLOWED_FIELDS = ("full_name", "email", "phone", "pan", "aadhaar", "address", "dob")
 REQUIRED_DOCUMENTS = ("pan", "aadhaar")
 
 
