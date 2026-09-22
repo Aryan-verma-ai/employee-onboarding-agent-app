@@ -69,6 +69,37 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             job.status, job.error_code = "complete", None
             document.scan_status = scan_status
             document.extraction = {"status": "complete", "reviewed": False, "job_id": job.id, **result}
+
+            # ── Auto-classify document type from OCR candidates ──
+            from .extraction import classify_document
+
+            candidates = result.get("candidates", [])
+            if document.doc_type == "other" and candidates:
+                detected_type = classify_document(candidates)
+                if detected_type != "other":
+                    document.doc_type = detected_type
+                    service.audit(
+                        case_id,
+                        "document.auto_classified",
+                        {"document_id": document_id, "detected_type": detected_type},
+                    )
+
+            # ── Auto-merge high-confidence accepted values into case.data ──
+            accepted = result.get("accepted", {})
+            if accepted:
+                merged = {**case.data}
+                for field, value in accepted.items():
+                    # Only fill empty fields — never overwrite user corrections
+                    if not merged.get(field):
+                        merged[field] = value
+                if merged != case.data:
+                    case.data = merged
+                    service.audit(
+                        case_id,
+                        "data.auto_merged",
+                        {"fields": sorted(set(accepted) - set(case.data))},
+                    )
+
             if case.status == "failed":
                 service.transition(case, "extracting")
             service.transition(case, "needs-information")

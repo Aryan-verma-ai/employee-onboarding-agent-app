@@ -32,18 +32,12 @@ def validate_upload(content: bytes, content_type: str) -> None:
 def blob_client(key):
     from azure.storage.blob import BlobServiceClient
 
+    from app.azure_auth import azure_credential
+
     url = os.getenv("AZURE_STORAGE_ACCOUNT_URL")
     if not url:
         raise HTTPException(503, "Private Azure Blob storage is not configured")
-    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-    if connection_string:
-        # Demo-only fallback for Container Apps express environments, which do
-        # not support managed identities. Keep this as a deployment secret.
-        service = BlobServiceClient.from_connection_string(connection_string)
-    else:
-        from app.azure_auth import azure_credential
-
-        service = BlobServiceClient(url, credential=azure_credential())
+    service = BlobServiceClient(url, credential=azure_credential())
     container = service.get_container_client(os.getenv("AZURE_STORAGE_CONTAINER", "onboarding-private"))
     if container.get_container_properties().get("public_access"):
         raise HTTPException(503, "Storage container must disable public access")
@@ -223,3 +217,83 @@ def extract(
     service.audit(case_id, "document.extraction_queued", {"document_id": document_id, "job_id": job.id})
     db.commit()
     return {"status": job.status, "document_id": document_id, "job_id": job.id}
+
+
+@router.post("/{case_id}/documents/auto", status_code=201)
+async def auto_upload_and_extract(
+    case_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    """Upload a document without specifying type — OCR auto-classifies it.
+
+    This is the agent-driven upload flow: the Foundry agent tells the user
+    to upload documents, the system auto-detects type from OCR content,
+    and auto-merges extracted values into the case data.
+    """
+    service = OnboardingService(db, principal)
+    case = service.get_case(case_id)
+    service.require_consent(case)
+    if case.status == "created":
+        raise HTTPException(409, "Completed cases are immutable")
+
+    content = await file.read(settings.max_upload_bytes + 1)
+    validate_upload(content, file.content_type)
+    digest = hashlib.sha256(content).hexdigest()
+
+    # Check for duplicate by sha256 (regardless of doc_type since we don't know it yet)
+    existing = db.scalar(
+        select(Document).where(Document.case_id == case_id, Document.sha256 == digest)
+    )
+    if existing:
+        return {"id": existing.id, "version": existing.version, "doc_type": existing.doc_type, "duplicate": True}
+
+    # Use "pending" as the initial type — worker will auto-classify after OCR
+    doc_type = "other"
+    version = (
+        db.scalar(
+            select(func.max(Document.version)).where(
+                Document.case_id == case_id, Document.doc_type == doc_type
+            )
+        )
+        or 0
+    ) + 1
+    document_id = str(uuid4())
+    key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
+    scan_status = store_content(key, content, file.content_type)
+    document = Document(
+        id=document_id,
+        case_id=case_id,
+        tenant_id=principal.tenant_id,
+        filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
+        content_type=file.content_type,
+        storage_key=key,
+        sha256=digest,
+        doc_type=doc_type,
+        version=version,
+        scan_status=scan_status,
+        extraction={"status": "pending"},
+        size=len(content),
+    )
+    db.add(document)
+    service.audit(
+        case_id, "document.auto_uploaded", {"document_id": document_id, "filename": document.filename}
+    )
+
+    # Immediately enqueue extraction so the agent flow is seamless
+    job = enqueue(db, principal, case, document)
+    document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
+
+    if case.status == "failed":
+        service.transition(case, "extracting")
+    service.transition(case, "extracting")
+    db.commit()
+    return {
+        "id": document_id,
+        "version": version,
+        "doc_type": doc_type,
+        "scan_status": scan_status,
+        "extraction_status": job.status,
+        "filename": document.filename,
+    }

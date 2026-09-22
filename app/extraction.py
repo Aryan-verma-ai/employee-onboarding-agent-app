@@ -88,3 +88,22 @@ def extract_document(content: bytes, document_id: str) -> dict:
     with DocumentIntelligenceClient(endpoint, document_credential(endpoint), retry_total=3) as client:
         result = client.begin_analyze_document("prebuilt-read", body=io.BytesIO(content)).result(timeout=120)
     return candidates_from_result(result, document_id)
+
+
+def classify_document(candidates: list[dict]) -> str:
+    """Auto-classify document type from OCR extraction candidates.
+
+    Uses the fields found by pattern matching to determine whether the
+    uploaded document is a PAN card, Aadhaar card, resume, or other.
+    """
+    fields_found = {c["field"] for c in candidates}
+    # PAN pattern is very specific — if found, this is almost certainly a PAN card
+    if "pan" in fields_found:
+        return "pan"
+    # Aadhaar pattern is also highly specific
+    if "aadhaar" in fields_found:
+        return "aadhaar"
+    # Email or phone with full_name suggests a resume/CV
+    if "email" in fields_found or ("phone" in fields_found and "full_name" in fields_found):
+        return "resume"
+    return "other"

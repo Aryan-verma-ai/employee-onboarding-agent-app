@@ -1,47 +1,742 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Onboarding · HR review</title>
-<style>body{font:16px system-ui;margin:0;background:#f3f6fa;color:#172b45}header{background:#12283d;color:white;padding:24px}main{max-width:1100px;margin:auto;padding:24px}section{background:white;padding:20px;margin-bottom:20px;border-radius:10px}label{display:inline-block;margin:8px}input,select,button,textarea{font:inherit;padding:9px;border:1px solid #879bb0;border-radius:5px}button{cursor:pointer;background:#0969b4;color:white}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:12px;border-bottom:1px solid #dde3ec}pre{white-space:pre-wrap;overflow-wrap:anywhere}#message{min-height:24px}textarea{width:90%;min-height:160px}.scroll{overflow:auto}[hidden]{display:none!important}#fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}#fields label{display:flex;flex-direction:column;gap:6px}:focus-visible{outline:3px solid #e7a800}</style></head>
-<body><header><h1>Employee onboarding</h1><p>HR review workspace · Azure AI Foundry</p></header><main>
-<section aria-labelledby="connect"><h2 id="connect">Connect securely</h2><button id="signin" disabled>Sign in with Microsoft</button> <button id="signout" hidden>Sign out</button> <button id="load">Load queue</button><p id="auth-status" role="status">Checking sign-in configuration�</p></section>
-<section><h2>Start or resume onboarding</h2><label>Department <select id="new-department"><option>engineering</option><option>hr</option><option>finance</option><option>sales</option><option>operations</option></select></label><label><input type="checkbox" id="consent"> I consent to processing my onboarding documents.</label><button id="create">Create case</button><p><label>Case ID <input id="case-id"></label><button id="resume">Resume case</button></p><p><label>Document type <select id="doc-type"><option>pan</option><option>aadhaar</option><option>resume</option><option>photograph</option><option>other</option></select></label><label>Document <input id="upload-file" type="file" accept=".pdf,.png,.jpg,.jpeg"></label><button id="upload">Upload document</button></p><div id="document-actions"></div><h3>Ask your Foundry onboarding agent</h3><label>Message <input id="chat-message" maxlength="4000" placeholder="What information is missing?"></label><button id="chat">Send</button><p id="chat-answer" aria-live="polite"></p></section>
-<p id="message" tabindex="-1" role="status" aria-live="polite"></p>
-<section><h2>Review queue</h2><label>Department <input id="department"></label><label>Employee ID <input id="employee_id"></label><label>Status <select id="status"><option value="">All</option><option>received</option><option>extracting</option><option>needs-information</option><option>validated</option><option>created</option><option>failed</option></select></label><button id="filter">Filter</button> <button data-export="csv">Export CSV</button> <button data-export="xlsx">Export XLSX</button><div class="scroll"><table><thead><tr><th>Name</th><th>Department</th><th>Status</th><th>Missing information</th><th>Review</th></tr></thead><tbody id="cases"></tbody></table></div><nav aria-label="Queue pages"><button id="previous" disabled>Previous page</button> <span id="page-status" aria-live="polite"></span> <button id="next" disabled>Next page</button></nav><p>Exports include all matching cases up to 5,000. Larger results require narrower filters; exports are never silently truncated.</p></section>
-<section id="detail" hidden><h2 tabindex="-1" id="review-heading">Case review</h2><button id="receipt" hidden>Download employee confirmation</button><pre id="record"></pre><h3>Correct information</h3><div id="fields"><label for="full_name">Full name <input id="full_name" autocomplete="name" maxlength="500"></label><label for="email">Email <input id="email" type="email" autocomplete="email" maxlength="500"></label><label for="phone">Phone <input id="phone" type="tel" autocomplete="tel" maxlength="30"></label><label for="pan">PAN <input id="pan" autocomplete="off" maxlength="10" pattern="[A-Z]{5}[0-9]{4}[A-Z]"></label><label for="aadhaar">Aadhaar <input id="aadhaar" inputmode="numeric" autocomplete="off" maxlength="12" pattern="[2-9][0-9]{11}"></label></div><p><button id="save">Save corrections</button> <button id="validate">Validate case</button></p><label id="attest-label"><input id="attest" type="checkbox"> I verified this information and authorize creating the employee.</label><button id="finalize">Confirm and create employee</button><h3>Documents and audit history</h3><pre id="evidence"></pre></section>
-<script src="/assets/msal-browser.min.js"></script>
-<script>
-let authClient, authConfig, authAccount, queueOffset=0, authGeneration=0; const pendingRequests=new Set(); const pageSize=25;
-let currentCase, reviewedDocumentIds=[], loadGeneration=0, reviewMode=false;
-function beginCaseLoad(){const generation=++loadGeneration;currentCase=null;reviewedDocumentIds=[];$('detail').hidden=true;$('attest').checked=false;$('document-actions').replaceChildren();for(const id of ['save','validate','finalize','upload','chat'])$(id).disabled=true;return generation;}
-function finishCaseLoad(id,generation,isHr=false){if(generation!==loadGeneration)return false;currentCase=id;reviewMode=isHr;$('finalize').hidden=!isHr;$('attest-label').hidden=!isHr;$('case-id').value=id;for(const key of ['save','validate','finalize','upload','chat'])$(key).disabled=false;return true;}
-function filters(){const q=new URLSearchParams();for(const key of ['department','status','employee_id'])if($(key).value)q.set(key,$(key).value);return q;}
-const $=id=>document.getElementById(id), message=text=>$('message').textContent=text;
-const fieldNames=['full_name','email','phone','pan','aadhaar'];
-function fillFields(data){for(const name of fieldNames)$(name).value=data[name]||'';}
-function fieldData(){const data={};for(const name of fieldNames){if(!$(name).reportValidity())throw Error('Please check the '+name.replace('_',' ')+' field.');data[name]=$(name).value.trim();}return data;}
-function caseSummary(item,id){$('receipt').hidden=item.status!=='created';$('review-heading').focus();$('record').textContent='Case: '+id+'\nStatus: '+item.status.replaceAll('-',' ')+'\n'+(item.employee_id?'Employee ID: '+item.employee_id+'\n':'')+'Information needed: '+(item.missing_fields.length?item.missing_fields.map(value=>value.replaceAll('_',' ').replaceAll(':',': ')).join(', '):'None currently listed');}
-function assertAuthGeneration(generation){if(generation!==authGeneration){const error=new Error('Account changed; previous request discarded.');error.name='AbortError';throw error;}}
-function clearAccountView(){authGeneration++;authAccount=null;for(const controller of pendingRequests)controller.abort();pendingRequests.clear();beginCaseLoad();queueOffset=0;reviewMode=false;for(const id of ['cases','document-actions'])$(id).replaceChildren();for(const id of ['record','evidence','chat-answer','page-status'])$(id).textContent='';for(const id of [...fieldNames,'case-id','chat-message','upload-file','employee_id'])$(id).value='';$('consent').checked=false;$('receipt').hidden=true;$('previous').disabled=true;$('next').disabled=true;$('signout').hidden=true;message('');}
-async function api(path,options={}){const generation=authGeneration,controller=new AbortController();pendingRequests.add(controller);try{const headers=await authHeaders();assertAuthGeneration(generation);const response=await fetch(path,{...options,signal:controller.signal,headers:{...headers,...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...options.headers}});assertAuthGeneration(generation);if(!response.ok){const body=await response.json();assertAuthGeneration(generation);throw Error(body.detail||'Request failed');}return {headers:response.headers,json:async()=>{const value=await response.json();assertAuthGeneration(generation);return value;},blob:async()=>{const value=await response.blob();assertAuthGeneration(generation);return value;}};}finally{pendingRequests.delete(controller);}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Agent-Centric Employee Onboarding</title>
+    <script src="/assets/msal-browser.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; background-color: #f3f6fa; color: #333; }
+        
+        header { background-color: #12283d; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .user-info { font-size: 0.9em; opacity: 0.9; }
+        
+        /* Setup & HR Queue */
+        .section-container { padding: 20px; background: white; margin: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .setup-row { display: flex; gap: 20px; margin-bottom: 10px; }
+        .setup-group { flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
+        .setup-group h3 { margin-top: 0; }
+        
+        /* Main Workspace */
+        #main-workspace { display: none; margin: 20px; gap: 20px; height: calc(100vh - 120px); }
+        
+        /* Profile Panel */
+        .profile-panel { flex: 0 0 35%; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow-y: auto; padding: 20px; }
+        .profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f3f6fa; padding-bottom: 10px; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
+        .badge.received { background: #e0e0e0; color: #333; }
+        .badge.extracting { background: #cce5ff; color: #004085; }
+        .badge.needs-information { background: #ffeeba; color: #856404; }
+        .badge.validated { background: #d4edda; color: #155724; }
+        .badge.created { background: #e2e3e5; color: #383d41; }
+        .badge.failed { background: #f8d7da; color: #721c24; }
+        
+        .field-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .field-label { font-weight: 500; color: #666; width: 30%; }
+        .field-value { flex: 1; margin-left: 10px; }
+        .field-value input { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        .field-action { margin-left: 10px; cursor: pointer; color: #0078d4; font-size: 0.9em; text-decoration: underline; background: none; border: none; padding: 0; }
+        
+        .section-title { font-size: 1.1em; font-weight: bold; margin: 20px 0 10px 0; border-bottom: 2px solid #f3f6fa; padding-bottom: 5px; }
+        
+        .doc-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; margin-bottom: 5px; border-radius: 4px; border: 1px solid #e9ecef; }
+        .doc-status { font-size: 0.8em; }
+        
+        .missing-fields { background: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 20px; font-size: 0.9em; }
+        
+        .actions-section { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 20px; }
+        button { background: #0078d4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; }
+        button:hover { background: #005a9e; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        
+        /* Chat Panel */
+        .chat-panel { flex: 1; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #fafafa; display: flex; flex-direction: column; gap: 15px; }
+        .msg { max-width: 80%; padding: 10px 15px; border-radius: 8px; line-height: 1.4; word-wrap: break-word; white-space: pre-wrap; }
+        .msg.user { align-self: flex-end; background: #0078d4; color: white; border-bottom-right-radius: 0; }
+        .msg.agent { align-self: flex-start; background: white; border: 1px solid #ddd; border-bottom-left-radius: 0; }
+        .msg.system { align-self: center; background: #fff3cd; color: #856404; font-size: 0.9em; padding: 5px 15px; border-radius: 15px; text-align: center; }
+        
+        .upload-zone { border: 2px dashed #0078d4; background: #f0f8ff; border-radius: 8px; padding: 20px; text-align: center; margin: 20px; cursor: pointer; transition: background 0.3s; }
+        .upload-zone.dragover { background: #e0efff; border-color: #005a9e; }
+        
+        .chat-input-area { padding: 15px 20px; background: white; border-top: 1px solid #ddd; display: flex; gap: 10px; }
+        .chat-input-area input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; outline: none; }
+        .chat-input-area input:focus { border-color: #0078d4; }
+        
+        /* HR Queue Table */
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+        th { background: #f8f9fa; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
 
-async function run(fn){document.querySelector('main').setAttribute('aria-busy','true');message('Working�');try{await fn();}catch(error){if(error.name!=='AbortError'){message(typeof error.message==='string'?error.message:'Request failed');$('message').focus();}}finally{document.querySelector('main').setAttribute('aria-busy','false');}}
-async function load(){const query=new URLSearchParams();for(const key of ['department','status','employee_id'])if($(key).value)query.set(key,$(key).value);query.set('limit',pageSize);query.set('offset',queueOffset);const cases=await(await api('/api/hr/cases?'+query)).json();$('previous').disabled=queueOffset===0;$('next').disabled=cases.length<pageSize;$('page-status').textContent='Showing '+(cases.length?queueOffset+1:0)+'�'+(queueOffset+cases.length)+'; page size '+pageSize;$('cases').replaceChildren();for(const item of cases){const row=document.createElement('tr');for(const value of [item.full_name||'Awaiting details',item.department,item.status,item.missing_fields.join(', ')]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}const cell=document.createElement('td'),button=document.createElement('button');button.textContent='Review';button.onclick=()=>run(()=>detail(item.case_id));cell.append(button);row.append(cell);$('cases').append(row);}message(cases.length+' cases loaded');}
-async function detail(id){const generation=beginCaseLoad();const item=await(await api('/api/hr/cases/'+id)).json();if(!finishCaseLoad(id,generation,true))return;reviewedDocumentIds=item.documents.filter(doc=>doc.extraction.status==='complete').map(doc=>doc.id);$('detail').hidden=false;caseSummary(item,id);fillFields(item.data);$('evidence').textContent=JSON.stringify({documents:item.documents,audit:item.audit},null,2);$('attest').checked=false;documentButtons(item.documents);}
-$('load').onclick=$('filter').onclick=()=>run(async()=>{queueOffset=0;await load();});$('previous').onclick=()=>run(async()=>{queueOffset=Math.max(0,queueOffset-pageSize);await load();});$('next').onclick=()=>run(async()=>{queueOffset+=pageSize;await load();});
-async function refreshCase(id,isHr,generation){if(loadGeneration!==generation||currentCase!==id)return;if(isHr)await detail(id);else await resume(id);}
-$('save').onclick=()=>run(async()=>{const id=currentCase,isHr=reviewMode,generation=loadGeneration;if(!id)throw Error('Load a case first');if(isHr&&!confirm('Confirm you reviewed the document evidence shown below and verified these fields.'))return;await api('/api/cases/'+id,{method:'PATCH',body:JSON.stringify({data:fieldData(),reviewed_document_ids:isHr?reviewedDocumentIds:[]})});await refreshCase(id,isHr,generation);message(isHr?'Corrections and document review saved':'Corrections saved');});
-$('validate').onclick=()=>run(async()=>{const id=currentCase,isHr=reviewMode,generation=loadGeneration;if(!id)throw Error('Load a case first');await api('/api/cases/'+id+'/validate',{method:'POST'});await refreshCase(id,isHr,generation);message('Validation refreshed');});
-$('finalize').onclick=()=>run(async()=>{if(!$('attest').checked)throw Error('Please verify and confirm the information first.');await api('/api/cases/'+currentCase+'/finalize',{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({confirmed:true})});await detail(currentCase);await load();});
-document.querySelectorAll('[data-export]').forEach(button=>button.onclick=()=>run(async()=>{const response=await api('/api/hr/export?'+filters()+'&limit=5000&format='+button.dataset.export),url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download='onboarding.'+button.dataset.export;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Authorized export downloaded');}));
-function documentButtons(documents){$('document-actions').replaceChildren();for(const doc of documents){const row=document.createElement('p');row.textContent=doc.doc_type+' v'+doc.version+' · '+doc.scan_status+' · '+doc.extraction.status+' ';const extract=document.createElement('button');extract.textContent='Extract / retry';extract.onclick=()=>run(async()=>{await api('/api/cases/'+currentCase+'/documents/'+doc.id+'/extract',{method:'POST'});message('Extraction queued. Resume or refresh this case to see the result.');});const download=document.createElement('button');download.textContent='Download for review';download.onclick=()=>run(async()=>{const response=await api('/api/cases/'+currentCase+'/documents/'+doc.id+'/download'),url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=doc.doc_type;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});row.append(extract,' ',download);$('document-actions').append(row);}}
-$('create').onclick=()=>run(async()=>{const item=await(await api('/api/cases',{method:'POST',body:JSON.stringify({department:$('new-department').value,consent:$('consent').checked})})).json();currentCase=item.id;$('case-id').value=item.id;message('Created case '+item.id);await resume();});
-async function resume(caseId){const id=typeof caseId==='string'?caseId:$('case-id').value.trim(),generation=beginCaseLoad();const item=await(await api('/api/cases/'+id)).json();const docs=await(await api('/api/cases/'+id+'/documents')).json();if(!finishCaseLoad(id,generation))return;caseSummary(item,id);fillFields(item.data);$('detail').hidden=false;documentButtons(docs);reviewedDocumentIds=[];$('evidence').textContent=docs.map(doc=>doc.doc_type+' · version '+doc.version+' · '+doc.scan_status+' · '+doc.extraction.status).join('\n')||'No documents uploaded yet.';message('Case '+item.status);}
-$('resume').onclick=()=>run(resume);
-$('upload').onclick=()=>run(async()=>{if(!currentCase)throw Error('Create or resume a case first');const file=$('upload-file').files[0];if(!file)throw Error('Select a document');const form=new FormData();form.append('file',file);form.append('doc_type',$('doc-type').value);await api('/api/cases/'+currentCase+'/documents',{method:'POST',body:form});await resume();message('Document uploaded. Start extraction after the malware scan completes.');});
-$('chat').onclick=()=>run(async()=>{if(!currentCase)throw Error('Create or resume a case first');const result=await(await api('/api/cases/'+currentCase+'/chat',{method:'POST',body:JSON.stringify({message:$('chat-message').value})})).json();$('chat-answer').textContent=result.message;});
-async function authHeaders(){if(authConfig?.development)return {};if(!authClient||!authAccount)throw Error('Sign in with Microsoft to continue.');try{const result=await authClient.acquireTokenSilent({account:authAccount,scopes:[authConfig.scope]});return {Authorization:'Bearer '+result.accessToken};}catch(error){throw Error('Your sign-in needs attention. Select Sign in with Microsoft again.');}}
-async function initializeSignIn(){authConfig=await(await fetch('/api/auth/config',{cache:'no-store'})).json();if(authConfig.development){$('auth-status').textContent='Explicit development identity is enabled.';return;}if(!authConfig.configured){$('auth-status').textContent='Microsoft sign-in is not configured. Ask the administrator to configure the Entra SPA client, API scope and redirect URI.';return;}authClient=new msal.PublicClientApplication({auth:{clientId:authConfig.client_id,authority:authConfig.authority,redirectUri:authConfig.redirect_uri},cache:{cacheLocation:'memoryStorage',temporaryCacheLocation:'sessionStorage'}});await authClient.initialize();$('signin').disabled=false;$('auth-status').textContent='Sign in with your organization account.';}
-$('signin').onclick=()=>run(async()=>{clearAccountView();const generation=authGeneration;$('auth-status').textContent='Signing in�';const result=await authClient.loginPopup({scopes:[authConfig.scope],prompt:'select_account'});assertAuthGeneration(generation);authAccount=result.account;$('signout').hidden=false;$('auth-status').textContent='Signed in as '+(authAccount.username||'organization user');message('Signed in. You can start onboarding or load the HR queue.');});
-$('signout').onclick=()=>run(async()=>{clearAccountView();const generation=authGeneration;await authClient.clearCache();assertAuthGeneration(generation);$('signout').hidden=true;$('auth-status').textContent='Signed out of this application.';message('Application tokens cleared. Your Microsoft browser session may remain signed in.');});
-$('receipt').onclick=()=>run(async()=>{const response=await api('/api/cases/'+currentCase+'/confirmation'),url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download='onboarding-confirmation.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('Employee confirmation downloaded.');});
-run(initializeSignIn);
-</script></main></body></html>
+<header>
+    <div>
+        <strong style="font-size: 1.2em;">🤖 Foundry Agent · Employee Onboarding</strong>
+    </div>
+    <div class="user-info">
+        <span id="auth-status">Checking auth...</span> | 
+        <span id="user-name"></span>
+        <button id="btn-back-hr" class="btn-secondary hidden" style="margin-left: 15px; padding: 4px 8px; font-size: 0.8em;" onclick="closeWorkspace()">← Back to HR Queue</button>
+    </div>
+</header>
+
+<div id="setup-section" class="section-container">
+    <h2>Case Setup</h2>
+    <div class="setup-row">
+        <div class="setup-group">
+            <h3>Create New Case</h3>
+            <label>Department:
+                <select id="new-dept">
+                    <option value="engineering">Engineering</option>
+                    <option value="sales">Sales</option>
+                    <option value="hr">HR</option>
+                    <option value="other">Other</option>
+                </select>
+            </label>
+            <br><br>
+            <label>
+                <input type="checkbox" id="new-consent"> Employee Consent Received
+            </label>
+            <br><br>
+            <button onclick="createNewCase()">Create Case</button>
+        </div>
+        <div class="setup-group">
+            <h3>Resume Case</h3>
+            <label>Case ID: <input type="text" id="resume-id" placeholder="UUID"></label>
+            <br><br>
+            <button onclick="resumeCase()">Resume</button>
+        </div>
+    </div>
+</div>
+
+<div id="main-workspace">
+    <!-- Profile Panel -->
+    <div class="profile-panel">
+        <div class="profile-header">
+            <strong>👤 EMPLOYEE PROFILE</strong>
+            <span id="case-status-badge" class="badge received">Received</span>
+        </div>
+        
+        <div class="section-title">Details</div>
+        <div id="profile-fields">
+            <!-- Dynamically populated -->
+        </div>
+
+        <div class="section-title">Documents</div>
+        <div id="document-list">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <div id="missing-section" class="missing-fields hidden">
+            <strong>── Missing ──</strong>
+            <div id="missing-list"></div>
+        </div>
+
+        <div class="actions-section">
+            <button id="btn-validate" onclick="validateCase()">Validate Case</button>
+            <button id="btn-export-profile" class="btn-secondary" onclick="exportProfile()">Export Profile (Excel)</button>
+            <label id="lbl-hr-checkbox" class="hidden">
+                <input type="checkbox" id="chk-hr-review"> HR Review Complete
+            </label>
+            <button id="btn-create-employee" class="btn-success hidden" onclick="finalizeCase()">Create Employee</button>
+            <button id="btn-download-confirmation" class="btn-secondary hidden" onclick="downloadConfirmation()">Download Confirmation</button>
+            <button id="btn-withdraw-consent" class="btn-danger" onclick="withdrawConsent()" style="margin-top: 10px;">Withdraw Consent</button>
+        </div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div class="chat-panel">
+        <div class="chat-messages" id="chat-history">
+            <div class="msg agent">🤖 Welcome! I'm your onboarding assistant. Upload PAN card, Aadhaar, resume, and photo to get started.</div>
+        </div>
+        
+        <div class="upload-zone" id="drop-zone">
+            <input type="file" id="file-input" multiple style="display: none;">
+            📎 <strong>Drag & drop documents here</strong> or click to browse
+        </div>
+        
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="handleChatKey(event)">
+            <button onclick="sendChatMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<div id="hr-queue-section" class="section-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2>HR Queue</h2>
+        <div>
+            <button onclick="loadHrQueue()" class="btn-secondary">Refresh</button>
+            <button onclick="exportQueue('csv')" class="btn-secondary">Export CSV</button>
+            <button onclick="exportQueue('xlsx')" class="btn-secondary">Export XLSX</button>
+        </div>
+    </div>
+    <div style="overflow-x: auto;">
+        <table id="hr-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Created At</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="hr-table-body">
+                <!-- Populated via API -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // --- MSAL Auth ---
+    let authClient = null;
+    let authAccount = null;
+
+    async function initializeSignIn() {
+        try {
+            const res = await fetch('/api/auth/config');
+            if (!res.ok) throw new Error("Could not fetch MSAL config");
+            const config = await res.json();
+            
+            authClient = new msal.PublicClientApplication({
+                auth: {
+                    clientId: config.client_id,
+                    authority: `https://login.microsoftonline.com/${config.tenant_id}`,
+                    redirectUri: window.location.origin + '/hr'
+                },
+                cache: {
+                    cacheLocation: "sessionStorage",
+                    storeAuthStateInCookie: false,
+                }
+            });
+            await authClient.initialize();
+            
+            const response = await authClient.handleRedirectPromise();
+            if (response) {
+                authAccount = response.account;
+            } else {
+                const accounts = authClient.getAllAccounts();
+                if (accounts.length > 0) {
+                    authAccount = accounts[0];
+                } else {
+                    authClient.loginRedirect({ scopes: ['User.Read'] });
+                    return false;
+                }
+            }
+            
+            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
+            document.getElementById('auth-status').innerText = 'Authenticated';
+            return true;
+        } catch (error) {
+            console.error("Auth error", error);
+            document.getElementById('auth-status').innerText = 'Auth Failed';
+            return false;
+        }
+    }
+
+    async function authHeaders() {
+        if (!authAccount) throw new Error("Not authenticated");
+        try {
+            const response = await authClient.acquireTokenSilent({
+                scopes: ['User.Read'],
+                account: authAccount
+            });
+            return { 'Authorization': `Bearer ${response.accessToken}` };
+        } catch (error) {
+            if (error instanceof msal.InteractionRequiredAuthError) {
+                authClient.acquireTokenRedirect({ scopes: ['User.Read'] });
+            }
+            throw error;
+        }
+    }
+
+    // --- API Helper ---
+    async function api(path, options = {}) {
+        const headers = await authHeaders();
+        const isFormData = options.body instanceof FormData;
+        
+        if (!isFormData && options.body) {
+            headers['Content-Type'] = 'application/json';
+        }
+        
+        const fetchOptions = {
+            ...options,
+            headers: {
+                ...headers,
+                ...options.headers
+            }
+        };
+        
+        if (options.body && !isFormData && typeof options.body === 'object') {
+            fetchOptions.body = JSON.stringify(options.body);
+        }
+        
+        const res = await fetch(path, fetchOptions);
+        if (!res.ok) {
+            let errorText = res.statusText;
+            try { errorText = await res.text(); } catch(e) {}
+            throw new Error(`API error (${res.status}): ${errorText}`);
+        }
+        
+        // Handle no content
+        if (res.status === 204) return null;
+        
+        // Return blob if specified
+        if (options.responseType === 'blob') {
+            return await res.blob();
+        }
+        
+        return await res.json();
+    }
+
+    async function run(fn) {
+        try {
+            await fn();
+        } catch (e) {
+            console.error(e);
+            alert(e.message);
+        }
+    }
+
+    // --- Application State ---
+    let currentCaseId = null;
+    let pollInterval = null;
+    let isExtracting = false;
+
+    // Fields that map from profile auto-extraction
+    const PROFILE_FIELDS = [
+        { key: 'full_name', label: 'Full Name' },
+        { key: 'email', label: 'Email' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'pan_number', label: 'PAN' },
+        { key: 'aadhaar_number', label: 'Aadhaar' }
+    ];
+
+    // --- Dashboard UI Logic ---
+    function showWorkspace() {
+        document.getElementById('setup-section').style.display = 'none';
+        document.getElementById('main-workspace').style.display = 'flex';
+        document.getElementById('btn-back-hr').classList.remove('hidden');
+    }
+
+    function closeWorkspace() {
+        document.getElementById('setup-section').style.display = 'block';
+        document.getElementById('main-workspace').style.display = 'none';
+        document.getElementById('btn-back-hr').classList.add('hidden');
+        currentCaseId = null;
+        stopPolling();
+        document.getElementById('chat-history').innerHTML = '<div class="msg agent">🤖 Welcome! I\'m your onboarding assistant. Upload PAN card, Aadhaar, resume, and photo to get started.</div>';
+    }
+
+    async function createNewCase() {
+        run(async () => {
+            const dept = document.getElementById('new-dept').value;
+            const consent = document.getElementById('new-consent').checked;
+            
+            const caseData = await api('/api/cases', {
+                method: 'POST',
+                body: { department: dept, consent_received: consent }
+            });
+            
+            currentCaseId = caseData.id;
+            showWorkspace();
+            await refreshProfile();
+            
+            // Auto greeting trigger
+            addSystemMessage("Case created. Starting chat...");
+            const resp = await api(`/api/cases/${currentCaseId}/chat`, {
+                method: 'POST',
+                body: { message: "I'm starting a new employee onboarding. What documents do you need?" }
+            });
+            appendChatMessage('user', "I'm starting a new employee onboarding. What documents do you need?");
+            appendChatMessage('agent', resp.response || resp.message || "Message received");
+        });
+    }
+
+    async function resumeCase(id) {
+        run(async () => {
+            const targetId = id || document.getElementById('resume-id').value.trim();
+            if (!targetId) return alert('Enter a valid Case ID');
+            
+            const caseData = await api(`/api/cases/${targetId}`);
+            currentCaseId = caseData.id;
+            showWorkspace();
+            await refreshProfile();
+        });
+    }
+
+    // --- Profile Management ---
+    async function refreshProfile() {
+        if (!currentCaseId) return;
+        
+        const caseData = await api(`/api/cases/${currentCaseId}`);
+        const statusBadge = document.getElementById('case-status-badge');
+        statusBadge.innerText = caseData.status;
+        statusBadge.className = `badge ${caseData.status}`;
+
+        // Render Fields
+        const fieldsContainer = document.getElementById('profile-fields');
+        fieldsContainer.innerHTML = '';
+        
+        PROFILE_FIELDS.forEach(f => {
+            const val = (caseData.employee_profile && caseData.employee_profile[f.key]) || '';
+            const row = document.createElement('div');
+            row.className = 'field-row';
+            
+            const displayVal = val ? val : '—';
+            
+            row.innerHTML = `
+                <div class="field-label">${f.label}:</div>
+                <div class="field-value" id="val-${f.key}">${displayVal}</div>
+                <button class="field-action" onclick="editField('${f.key}', '${val}')">Edit</button>
+            `;
+            fieldsContainer.appendChild(row);
+        });
+
+        // Compute Missing Fields
+        const missing = [];
+        PROFILE_FIELDS.forEach(f => {
+            if (!caseData.employee_profile || !caseData.employee_profile[f.key]) {
+                missing.push(f.key);
+            }
+        });
+        
+        const missingSec = document.getElementById('missing-section');
+        if (missing.length > 0) {
+            missingSec.classList.remove('hidden');
+            document.getElementById('missing-list').innerText = missing.join(', ');
+        } else {
+            missingSec.classList.add('hidden');
+        }
+
+        // Action Buttons Visibility
+        document.getElementById('btn-validate').style.display = (caseData.status !== 'validated' && caseData.status !== 'created') ? 'inline-block' : 'none';
+        
+        const chkHr = document.getElementById('lbl-hr-checkbox');
+        const btnCreate = document.getElementById('btn-create-employee');
+        if (caseData.status === 'validated') {
+            chkHr.classList.remove('hidden');
+            btnCreate.classList.remove('hidden');
+        } else {
+            chkHr.classList.add('hidden');
+            btnCreate.classList.add('hidden');
+        }
+
+        const btnDownload = document.getElementById('btn-download-confirmation');
+        if (caseData.status === 'created') {
+            btnDownload.classList.remove('hidden');
+            document.getElementById('btn-withdraw-consent').style.display = 'none';
+        } else {
+            btnDownload.classList.add('hidden');
+            document.getElementById('btn-withdraw-consent').style.display = 'inline-block';
+        }
+
+        // Render Documents & Status
+        await refreshDocuments();
+    }
+
+    function editField(key, currentValue) {
+        const valContainer = document.getElementById(`val-${key}`);
+        valContainer.innerHTML = `
+            <input type="text" id="input-${key}" value="${currentValue}" onkeypress="if(event.key==='Enter') saveField('${key}')">
+        `;
+        document.getElementById(`input-${key}`).focus();
+        // Change edit button to save
+        valContainer.nextElementSibling.innerText = 'Save';
+        valContainer.nextElementSibling.onclick = () => saveField(key);
+    }
+
+    async function saveField(key) {
+        run(async () => {
+            const input = document.getElementById(`input-${key}`);
+            if (!input) return;
+            const newVal = input.value.trim();
+            
+            const patchObj = { employee_profile: {} };
+            patchObj.employee_profile[key] = newVal;
+            
+            await api(`/api/cases/${currentCaseId}`, {
+                method: 'PATCH',
+                body: patchObj
+            });
+            
+            await refreshProfile();
+        });
+    }
+
+    // --- Document Polling & Extraction ---
+    async function refreshDocuments() {
+        if (!currentCaseId) return;
+        const docs = await api(`/api/cases/${currentCaseId}/documents`);
+        
+        const docList = document.getElementById('document-list');
+        docList.innerHTML = '';
+        
+        let anyExtracting = false;
+        
+        docs.forEach(d => {
+            const item = document.createElement('div');
+            item.className = 'doc-item';
+            
+            let statusText = d.extraction_status === 'complete' ? '✅ Done' : 
+                             d.extraction_status === 'pending' || d.extraction_status === 'in_progress' ? '⏳ Extracting...' : 
+                             d.extraction_status === 'failed' ? '❌ Failed' : '📄 Uploaded';
+                             
+            if (d.extraction_status === 'pending' || d.extraction_status === 'in_progress') {
+                anyExtracting = true;
+            }
+
+            item.innerHTML = `
+                <div>
+                    <strong>${d.doc_type || 'Unknown'}</strong><br>
+                    <span style="font-size:0.8em; color:#666">${d.filename}</span>
+                </div>
+                <div class="doc-status">${statusText}</div>
+            `;
+            docList.appendChild(item);
+        });
+
+        // Manage polling logic based on status
+        if (anyExtracting && !isExtracting) {
+            isExtracting = true;
+            startPolling();
+        } else if (!anyExtracting && isExtracting) {
+            isExtracting = false;
+            stopPolling();
+            addSystemMessage("✅ Extraction complete — profile updated");
+            await refreshProfile(); // Refresh profile to get new OCR data
+        }
+    }
+
+    function startPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(refreshDocuments, 3000);
+    }
+
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    // --- Actions ---
+    async function validateCase() {
+        run(async () => {
+            await api(`/api/cases/${currentCaseId}/validate`, { method: 'POST' });
+            await refreshProfile();
+            addSystemMessage("Case validated.");
+        });
+    }
+
+    async function finalizeCase() {
+        const hrChecked = document.getElementById('chk-hr-review').checked;
+        if (!hrChecked) return alert("HR must review before creating employee");
+        
+        run(async () => {
+            await api(`/api/cases/${currentCaseId}/finalize`, { method: 'POST' });
+            await refreshProfile();
+            addSystemMessage("Employee created successfully!");
+            loadHrQueue();
+        });
+    }
+
+    async function withdrawConsent() {
+        if (!confirm("Are you sure you want to withdraw consent? This will fail the case.")) return;
+        run(async () => {
+            await api(`/api/cases/${currentCaseId}`, {
+                method: 'PATCH',
+                body: { consent_received: false }
+            });
+            await refreshProfile();
+            addSystemMessage("Consent withdrawn. Case halted.");
+        });
+    }
+
+    async function exportProfile() {
+        run(async () => {
+            const blob = await api(`/api/cases/${currentCaseId}/profile/export`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Profile_${currentCaseId}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        });
+    }
+
+    async function downloadConfirmation() {
+        run(async () => {
+            const blob = await api(`/api/cases/${currentCaseId}/confirmation/export`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Confirmation_${currentCaseId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        });
+    }
+
+    // --- Chat & Uploads ---
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            uploadFiles(e.dataTransfer.files);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            uploadFiles(fileInput.files);
+        }
+    });
+
+    async function uploadFiles(files) {
+        if (!currentCaseId) return alert("No active case!");
+        
+        run(async () => {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                addSystemMessage(`📄 Uploading: ${file.name}...`);
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                await api(`/api/cases/${currentCaseId}/documents/auto`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                addSystemMessage(`📄 Uploaded: ${file.name} — extracting...`);
+            }
+            // Trigger refresh to show extracting status and start polling
+            await refreshDocuments();
+        });
+    }
+
+    function addSystemMessage(text) {
+        const history = document.getElementById('chat-history');
+        const div = document.createElement('div');
+        div.className = 'msg system';
+        div.innerText = text;
+        history.appendChild(div);
+        history.scrollTop = history.scrollHeight;
+    }
+
+    function appendChatMessage(role, text) {
+        const history = document.getElementById('chat-history');
+        const div = document.createElement('div');
+        div.className = `msg ${role === 'user' ? 'user' : 'agent'}`;
+        
+        if (role === 'agent') {
+            div.innerText = '🤖 ' + text;
+        } else {
+            div.innerText = text;
+        }
+        
+        history.appendChild(div);
+        history.scrollTop = history.scrollHeight;
+    }
+
+    async function sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text || !currentCaseId) return;
+        
+        appendChatMessage('user', text);
+        input.value = '';
+        
+        run(async () => {
+            const resp = await api(`/api/cases/${currentCaseId}/chat`, {
+                method: 'POST',
+                body: { message: text }
+            });
+            appendChatMessage('agent', resp.response || resp.message || "Message received");
+        });
+    }
+
+    function handleChatKey(e) {
+        if (e.key === 'Enter') sendChatMessage();
+    }
+
+    // --- HR Queue ---
+    async function loadHrQueue() {
+        run(async () => {
+            const cases = await api('/api/hr/cases');
+            const tbody = document.getElementById('hr-table-body');
+            tbody.innerHTML = '';
+            
+            cases.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${c.id.substring(0, 8)}...</td>
+                    <td><span class="badge ${c.status}">${c.status}</span></td>
+                    <td>${(c.employee_profile && c.employee_profile.full_name) ? c.employee_profile.full_name : '—'}</td>
+                    <td>${c.department || '—'}</td>
+                    <td>${new Date(c.created_at).toLocaleString()}</td>
+                    <td><button class="btn-secondary" onclick="resumeCase('${c.id}')">Review</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        });
+    }
+
+    async function exportQueue(format) {
+        run(async () => {
+            const blob = await api(`/api/hr/cases/export?format=${format}`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `HR_Queue.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        });
+    }
+
+    // --- Initialization ---
+    window.onload = async () => {
+        const loggedIn = await initializeSignIn();
+        if (loggedIn) {
+            loadHrQueue();
+        }
+    };
+</script>
+</body>
+</html>

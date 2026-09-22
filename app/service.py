@@ -142,114 +142,53 @@ class OnboardingService:
         self.db.commit()
         return case
 
-    def document_workflow(self, case_id):
-        """Return document-processing facts suitable for an agent, without document contents."""
+    def get_extracted_data(self, case_id):
+        """Return OCR-extracted data and document statuses for the agent.
+
+        Projects only field names, document types, and statuses — never
+        raw PII values — so the agent can report findings without leaking
+        identity numbers into the conversation.
+        """
         case = self.get_case(case_id)
         self.require_consent(case)
-        from .validation import REQUIRED_DOCUMENTS
-
         documents = self.db.scalars(
-            select(Document)
-            .where(Document.case_id == case.id, Document.tenant_id == case.tenant_id)
-            .order_by(Document.doc_type, Document.version.desc(), Document.created_at.desc())
-        ).all()
-        latest = {}
-        for document in documents:
-            latest.setdefault(document.doc_type, document)
-
-        def summary(document):
-            extraction = document.extraction or {}
-            candidates = extraction.get("candidates", [])
-            fields = sorted(
-                {
-                    candidate.get("field")
-                    for candidate in candidates
-                    if isinstance(candidate, dict)
-                    and isinstance(candidate.get("field"), str)
-                    and candidate["field"] in {"full_name", "email", "phone", "pan", "aadhaar"}
-                }
+            select(Document).where(
+                Document.case_id == case.id, Document.tenant_id == case.tenant_id
             )
-            return {
-                "doc_type": document.doc_type,
-                "version": document.version,
-                "scan_status": document.scan_status,
-                "extraction_status": extraction.get("status", "pending"),
-                "reviewed": extraction.get("reviewed") is True,
-                "candidate_fields": fields,
-            }
-
-        return {
-            "documents": [summary(document) for document in latest.values()],
-            "missing_required_documents": [name for name in REQUIRED_DOCUMENTS if name not in latest],
-        }
-
-    def request_document_extraction(self, case_id):
-        """Queue real extraction work for documents that have not completed successfully."""
-        from .jobs import enqueue
-
-        case = self.get_case(case_id)
-        self.require_consent(case)
-        if case.status == "created":
-            raise HTTPException(409, "Completed cases are immutable")
-        documents = self.db.scalars(
-            select(Document).where(Document.case_id == case.id, Document.tenant_id == case.tenant_id)
         ).all()
-        queued = []
-        already_complete = []
-        for document in documents:
-            extraction = document.extraction or {}
-            if extraction.get("status") == "complete":
-                already_complete.append(document.doc_type)
-                continue
-            job = enqueue(self.db, self.principal, case, document)
-            document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
-            queued.append(document.doc_type)
-            self.audit(case.id, "document.extraction_queued", {"document_id": document.id, "job_id": job.id})
-        if queued:
-            self.transition(case, "extracting")
-        self.db.commit()
-        return {
-            "queued_document_types": sorted(queued),
-            "already_complete_document_types": sorted(already_complete),
-            "message": "Extraction is asynchronous; inspect documents or case status for completion.",
-        }
 
-    def profile_readiness(self, case_id):
-        """Build a non-PII profile readiness view; authoritative fields remain HR-controlled."""
+        # Which fields are populated in case.data?
         from .validation import REQUIRED_FIELDS
 
-        case = self.get_case(case_id)
-        self.require_consent(case)
-        present = [field for field in REQUIRED_FIELDS if isinstance(case.data.get(field), str) and case.data[field].strip()]
-        errors = self.validation_errors(case)
-        return {
-            "department": case.department,
-            "profile_fields_present": present,
-            "profile_fields_missing": [field for field in REQUIRED_FIELDS if field not in present],
-            "document_validation_issues": [
-                issue
-                for issue in errors
-                if issue.startswith(("document:", "scan:", "extraction:", "review:", "conflict:"))
-            ],
-            "authoritative_profile_saved": len(present) == len(REQUIRED_FIELDS),
-            "message": "The agent does not write OCR values into the employee record; HR uses the authenticated form to review and save authoritative data.",
-        }
+        populated_fields = [f for f in REQUIRED_FIELDS if case.data.get(f)]
+        missing_fields = [f for f in REQUIRED_FIELDS if not case.data.get(f)]
 
-    def confirmation_readiness(self, case_id):
-        """State whether the HR-only finalization endpoint may be presented, never invoke it."""
-        case = self.get_case(case_id)
-        self.require_consent(case)
-        errors = self.validation_errors(case)
+        doc_summaries = []
+        for doc in documents:
+            summary = {
+                "doc_type": doc.doc_type,
+                "extraction_status": doc.extraction.get("status", "pending"),
+                "scan_status": doc.scan_status,
+            }
+            # Report which fields were extracted from this document (not values)
+            candidates = doc.extraction.get("candidates", [])
+            if candidates:
+                summary["fields_found"] = sorted({c["field"] for c in candidates})
+            accepted = doc.extraction.get("accepted", {})
+            if accepted:
+                summary["fields_accepted"] = sorted(accepted.keys())
+            review = doc.extraction.get("review_fields", [])
+            if review:
+                summary["fields_needing_review"] = review
+            doc_summaries.append(summary)
+
         return {
             "case_status": case.status,
+            "populated_fields": populated_fields,
+            "missing_fields": missing_fields,
+            "documents": doc_summaries,
             "employee_created": case.status == "created",
-            "ready_for_hr_confirmation": case.status == "validated" and not errors,
-            "blocking_issues": errors,
-            "required_action": (
-                "HR must use the authenticated Create employee action and explicitly confirm."
-                if case.status != "created"
-                else "Employee has already been created."
-            ),
+            "employee_id": case.employee_id,
         }
 
     def finalize_case(self, case_id, confirmed, idempotency_key):

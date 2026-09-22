@@ -178,3 +178,97 @@ def withdraw_consent(case_id: str, body: Confirm, svc=Depends(service)):
         svc.audit(case.id, "consent-withdrawn", {"policy_version": case.consent_policy_version})
         svc.db.commit()
     return case_response(case)
+
+
+@app.get("/api/cases/{case_id}/profile/export")
+def export_employee_profile(case_id: str, svc=Depends(service)):
+    """Generate an Excel employee profile from the case data.
+
+    Available at any stage — exports whatever data has been collected so far.
+    After employee creation the employee ID is included.
+    """
+    import io
+
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    case = svc.get_case(case_id)
+    svc.require_consent(case)
+
+    data = case.data or {}
+    if not data:
+        raise HTTPException(422, "No employee data to export yet")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Employee Profile"
+
+    # ── Styles ──
+    header_font = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
+    header_fill = PatternFill(start_color="0078D4", end_color="0078D4", fill_type="solid")
+    label_font = Font(name="Calibri", bold=True, size=11)
+    value_font = Font(name="Calibri", size=11)
+    label_fill = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+
+    # ── Title Row ──
+    ws.merge_cells("A1:B1")
+    title_cell = ws["A1"]
+    title_cell.value = "Employee Onboarding Profile"
+    title_cell.font = header_font
+    title_cell.fill = header_fill
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws["B1"].fill = header_fill
+    ws.row_dimensions[1].height = 35
+
+    # ── Column widths ──
+    ws.column_dimensions["A"].width = 25
+    ws.column_dimensions["B"].width = 45
+
+    # ── Profile fields ──
+    profile_fields = [
+        ("Employee ID", case.employee_id or "Pending creation"),
+        ("Case ID", case.id),
+        ("Department", case.department),
+        ("Onboarding Status", case.status.replace("-", " ").title()),
+        ("", ""),  # spacer
+        ("Full Name", data.get("full_name", "")),
+        ("Email", data.get("email", "")),
+        ("Phone", data.get("phone", "")),
+        ("PAN Number", data.get("pan", "")),
+        ("Aadhaar Number", data.get("aadhaar", "")),
+        ("", ""),  # spacer
+        ("Created At", case.created_at.strftime("%Y-%m-%d %H:%M UTC") if case.created_at else ""),
+    ]
+
+    for i, (label, value) in enumerate(profile_fields, start=2):
+        label_cell = ws.cell(row=i, column=1, value=label)
+        value_cell = ws.cell(row=i, column=2, value=value)
+        if label:
+            label_cell.font = label_font
+            label_cell.fill = label_fill
+            label_cell.border = thin_border
+            value_cell.font = value_font
+            value_cell.border = thin_border
+            value_cell.alignment = Alignment(horizontal="left")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    svc.audit(case.id, "profile.exported", {"format": "xlsx"})
+    svc.db.commit()
+
+    filename = f"employee_profile_{data.get('full_name', 'unknown').replace(' ', '_')}.xlsx"
+    return Response(
+        buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
