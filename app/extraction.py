@@ -321,7 +321,28 @@ def document_credential(endpoint):
     if not key:
         target = urlparse(endpoint)
         foundry = urlparse(os.getenv("FOUNDRY_PROJECT_ENDPOINT", ""))
-        if target.scheme != "https" or target.hostname != foundry.hostname or not foundry.hostname:
+        target_name = (target.hostname or "").split(".")[0]
+        foundry_name = (foundry.hostname or "").split(".")[0]
+        valid_host = (
+            target.scheme == "https"
+            and bool(target.hostname)
+            and (
+                target.hostname == foundry.hostname
+                or (
+                    target_name
+                    and target_name == foundry_name
+                    and (
+                        (target.hostname or "").endswith(".cognitiveservices.azure.com")
+                        or (target.hostname or "").endswith(".services.ai.azure.com")
+                    )
+                    and (
+                        (foundry.hostname or "").endswith(".cognitiveservices.azure.com")
+                        or (foundry.hostname or "").endswith(".services.ai.azure.com")
+                    )
+                )
+            )
+        )
+        if not valid_host:
             raise ValueError("Shared API key requires the same HTTPS Foundry resource host")
         key = os.getenv("AZURE_OPENAI_API_KEY")
     if not key:
@@ -335,8 +356,8 @@ def extract_document(content: bytes, document_id: str) -> dict:
         raise RuntimeError("Document Intelligence endpoint is not configured")
     from azure.ai.documentintelligence import DocumentIntelligenceClient
 
-    with DocumentIntelligenceClient(endpoint, document_credential(endpoint), retry_total=3) as client:
-        result = client.begin_analyze_document("prebuilt-read", body=io.BytesIO(content)).result(timeout=120)
+    with DocumentIntelligenceClient(endpoint, document_credential(endpoint), retry_total=5) as client:
+        result = client.begin_analyze_document("prebuilt-read", body=io.BytesIO(content)).result(timeout=300)
     return candidates_from_result(result, document_id)
 
 

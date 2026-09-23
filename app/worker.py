@@ -44,12 +44,17 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                 db.rollback()  # Do not hold a transaction across the cloud call.
                 result = extractor(content, document_id)
         except Exception as exc:
-            logging.getLogger(__name__).exception("Extraction failed for document %s: %s", document_id, exc)
-            error = (
-                "consent_or_access_denied"
-                if getattr(exc, "status_code", None) in {403, 404}
-                else "extraction_failed"
-            )
+            status_code = getattr(exc, "status_code", None)
+            if status_code == 409:
+                logging.getLogger(__name__).info(
+                    "Malware scan pending for document %s (409) — will retry shortly", document_id
+                )
+                error = "scan_pending"
+            else:
+                logging.getLogger(__name__).exception(
+                    "Extraction failed for document %s: %s", document_id, exc
+                )
+                error = "consent_or_access_denied" if status_code in {403, 404} else "extraction_failed"
             db.rollback()
         job = fenced_job(db, principal, job_id, token)
         if not job:
@@ -60,18 +65,43 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             db.commit()
             return True
         if error:
-            exhausted = job.attempts >= 5
-            job.status = "failed" if exhausted else "queued"
-            job.error_code = error
-            job.available_at = utcnow() + timedelta(seconds=min(300, 5 * 2**job.attempts))
-            document.extraction = {"status": job.status, "retryable": True, "error": error, "job_id": job.id}
-            if exhausted:
-                service.transition(case, "failed")
-            service.audit(
-                case_id,
-                "document.extraction_retry" if not exhausted else "document.extraction_failed",
-                {"document_id": document_id, "attempt": job.attempts},
-            )
+            if error == "scan_pending":
+                # Malware scan still in progress — retry quickly, don't count as a real failure
+                scan_exhausted = job.attempts >= 20
+                job.status = "failed" if scan_exhausted else "queued"
+                job.error_code = error
+                job.available_at = utcnow() + timedelta(seconds=15)
+                document.extraction = {
+                    "status": job.status,
+                    "retryable": True,
+                    "error": error,
+                    "job_id": job.id,
+                }
+                if scan_exhausted:
+                    service.transition(case, "failed")
+                service.audit(
+                    case_id,
+                    "document.scan_pending_retry" if not scan_exhausted else "document.scan_pending_failed",
+                    {"document_id": document_id, "attempt": job.attempts},
+                )
+            else:
+                exhausted = job.attempts >= 5
+                job.status = "failed" if exhausted else "queued"
+                job.error_code = error
+                job.available_at = utcnow() + timedelta(seconds=min(300, 5 * 2**job.attempts))
+                document.extraction = {
+                    "status": job.status,
+                    "retryable": True,
+                    "error": error,
+                    "job_id": job.id,
+                }
+                if exhausted:
+                    service.transition(case, "failed")
+                service.audit(
+                    case_id,
+                    "document.extraction_retry" if not exhausted else "document.extraction_failed",
+                    {"document_id": document_id, "attempt": job.attempts},
+                )
         else:
             job.status, job.error_code = "complete", None
             document.scan_status = scan_status

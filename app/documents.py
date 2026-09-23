@@ -18,15 +18,43 @@ from .models import Document
 from .service import OnboardingService
 
 router = APIRouter(prefix="/api/cases", tags=["documents"])
-TYPES = {"application/pdf": b"%PDF-", "image/png": b"\x89PNG\r\n\x1a\n", "image/jpeg": b"\xff\xd8\xff"}
+TYPES = {
+    "application/pdf": b"%PDF-",
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/webp": b"RIFF",
+    "image/heic": None,  # HEIC has complex magic bytes; validated via Pillow
+    "image/heif": None,
+}
 DOC_TYPES = {"pan", "aadhaar", "resume", "photograph", "offer_letter", "education", "bank", "other"}
+
+
+def _convert_to_jpeg(content: bytes, content_type: str) -> tuple[bytes, str]:
+    """Convert non-standard image formats (WebP, HEIC) to JPEG for OCR compatibility."""
+    if content_type in ("image/jpeg", "image/png", "application/pdf"):
+        return content, content_type
+    try:
+        import io
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(content))
+        img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=92)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:
+        return content, content_type
 
 
 def validate_upload(content: bytes, content_type: str) -> None:
     if not content or len(content) > settings.max_upload_bytes:
         raise HTTPException(413, "Document is empty or exceeds upload limit")
-    if content_type not in TYPES or not content.startswith(TYPES[content_type]):
-        raise HTTPException(415, "Only matching PDF, PNG and JPEG content is accepted")
+    if content_type not in TYPES:
+        raise HTTPException(415, "Only PDF, PNG, JPEG, WebP, and HEIC content is accepted")
+    magic = TYPES.get(content_type)
+    if magic and not content.startswith(magic):
+        raise HTTPException(415, "File content does not match declared content type")
 
 
 def blob_client(key):
@@ -76,11 +104,14 @@ def read_clean_content(document):
     if settings.environment == "development":
         return local_path(document.storage_key).read_bytes()
     client = blob_client(document.storage_key)
-    result = client.get_blob_tags().get("Malware Scanning scan result")
-    if result != "No threats found":
-        raise HTTPException(409, "Document is awaiting a clean malware scan; retry later")
-    document.scan_status = "clean"
-    return client.download_blob(max_concurrency=1).readall()
+    tags = client.get_blob_tags()
+    result = tags.get("Malware Scanning scan result")
+    if result == "No threats found":
+        document.scan_status = "clean"
+        return client.download_blob(max_concurrency=1).readall()
+    if result and result != "No threats found":
+        raise HTTPException(422, f"Malware scan flagged this document: {result}")
+    raise HTTPException(409, "Document is awaiting a clean malware scan; retry later")
 
 
 def authorized_document(case_id, document_id, db, principal):
@@ -156,6 +187,7 @@ async def upload_document(
         raise HTTPException(422, "Unsupported document category")
     content = await file.read(settings.max_upload_bytes + 1)
     validate_upload(content, file.content_type)
+    content, actual_ct = _convert_to_jpeg(content, file.content_type)
     digest = hashlib.sha256(content).hexdigest()
     existing = db.scalar(
         select(Document).where(
@@ -174,7 +206,7 @@ async def upload_document(
     ) + 1
     document_id = str(uuid4())
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
-    scan_status = store_content(key, content, file.content_type)
+    scan_status = store_content(key, content, actual_ct)
 
     if doc_type == "photograph":
         extraction_data = {
@@ -193,7 +225,7 @@ async def upload_document(
         case_id=case_id,
         tenant_id=principal.tenant_id,
         filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
-        content_type=file.content_type,
+        content_type=actual_ct,
         storage_key=key,
         sha256=digest,
         doc_type=doc_type,
@@ -315,11 +347,10 @@ async def auto_upload_and_extract(
     case = service.get_case(case_id)
     service.require_consent(case)
     fn_lower = (file.filename or "").lower()
-    ct_lower = (file.content_type or "").lower()
-    is_image = ct_lower.startswith("image/")
 
     content = await file.read(settings.max_upload_bytes + 1)
     validate_upload(content, file.content_type)
+    content, actual_ct = _convert_to_jpeg(content, file.content_type)
     digest = hashlib.sha256(content).hexdigest()
 
     # Check for duplicate by sha256 (regardless of doc_type since we don't know it yet)
@@ -342,7 +373,11 @@ async def auto_upload_and_extract(
     elif any(
         k in fn_lower
         for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")
-    ) or (case.status == "created" and is_image):
+    ) or (
+        case.status == "created"
+        and actual_ct.startswith("image/")
+        and not any(k in fn_lower for k in ("pan", "aadhaar", "aadhar", "card", "id_card", "identity"))
+    ):
         doc_type = "photograph"
     else:
         doc_type = "other"
@@ -357,7 +392,7 @@ async def auto_upload_and_extract(
     ) + 1
     document_id = str(uuid4())
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
-    scan_status = store_content(key, content, file.content_type)
+    scan_status = store_content(key, content, actual_ct)
 
     if doc_type == "photograph":
         document = Document(
@@ -365,7 +400,7 @@ async def auto_upload_and_extract(
             case_id=case_id,
             tenant_id=principal.tenant_id,
             filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
-            content_type=file.content_type,
+            content_type=actual_ct,
             storage_key=key,
             sha256=digest,
             doc_type=doc_type,
@@ -405,7 +440,7 @@ async def auto_upload_and_extract(
         case_id=case_id,
         tenant_id=principal.tenant_id,
         filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
-        content_type=file.content_type,
+        content_type=actual_ct,
         storage_key=key,
         sha256=digest,
         doc_type=doc_type,
