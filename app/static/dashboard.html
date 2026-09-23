@@ -2,301 +2,1531 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Agent-Centric Employee Onboarding</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent HR Workspace · Employee Onboarding</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="/assets/msal-browser.min.js"></script>
     <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { margin: 0; padding: 0; background-color: #f3f6fa; color: #333; }
-        
-        header { background-color: #12283d; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .user-info { font-size: 0.9em; opacity: 0.9; }
-        
-        /* Setup & HR Queue */
-        .section-container { padding: 20px; background: white; margin: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .setup-row { display: flex; gap: 20px; margin-bottom: 10px; }
-        .setup-group { flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
-        .setup-group h3 { margin-top: 0; }
-        
-        /* Main Workspace */
-        #main-workspace { display: none; margin: 20px; gap: 20px; height: calc(100vh - 120px); }
-        
-        /* Profile Panel */
-        .profile-panel { flex: 0 0 35%; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow-y: auto; padding: 20px; }
-        .profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f3f6fa; padding-bottom: 10px; }
-        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
-        .badge.received { background: #e0e0e0; color: #333; }
-        .badge.extracting { background: #cce5ff; color: #004085; }
-        .badge.needs-information { background: #ffeeba; color: #856404; }
-        .badge.validated { background: #d4edda; color: #155724; }
-        .badge.created { background: #e2e3e5; color: #383d41; }
-        .badge.failed { background: #f8d7da; color: #721c24; }
-        
-        .field-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
-        .field-label { font-weight: 500; color: #666; width: 30%; }
-        .field-value { flex: 1; margin-left: 10px; }
-        .field-value input { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
-        .field-action { margin-left: 10px; cursor: pointer; color: #0078d4; font-size: 0.9em; text-decoration: underline; background: none; border: none; padding: 0; }
-        
-        .section-title { font-size: 1.1em; font-weight: bold; margin: 20px 0 10px 0; border-bottom: 2px solid #f3f6fa; padding-bottom: 5px; }
-        
-        .doc-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; margin-bottom: 5px; border-radius: 4px; border: 1px solid #e9ecef; }
-        .doc-status { font-size: 0.8em; }
-        
-        .missing-fields { background: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; margin-bottom: 20px; font-size: 0.9em; }
-        
-        .actions-section { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 20px; }
-        button { background: #0078d4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; }
-        button:hover { background: #005a9e; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .btn-secondary { background: #6c757d; }
-        .btn-secondary:hover { background: #5a6268; }
-        .btn-success { background: #28a745; }
-        .btn-success:hover { background: #218838; }
-        .btn-danger { background: #dc3545; }
-        .btn-danger:hover { background: #c82333; }
-        
-        /* Chat Panel */
-        .chat-panel { flex: 1; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
-        
-        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #fafafa; display: flex; flex-direction: column; gap: 15px; }
-        .msg { max-width: 80%; padding: 10px 15px; border-radius: 8px; line-height: 1.4; word-wrap: break-word; white-space: pre-wrap; }
-        .msg.user { align-self: flex-end; background: #0078d4; color: white; border-bottom-right-radius: 0; }
-        .msg.agent { align-self: flex-start; background: white; border: 1px solid #ddd; border-bottom-left-radius: 0; }
-        .msg.system { align-self: center; background: #fff3cd; color: #856404; font-size: 0.9em; padding: 5px 15px; border-radius: 15px; text-align: center; }
-        
-        .upload-zone { border: 2px dashed #0078d4; background: #f0f8ff; border-radius: 8px; padding: 20px; text-align: center; margin: 20px; cursor: pointer; transition: background 0.3s; }
-        .upload-zone.dragover { background: #e0efff; border-color: #005a9e; }
-        
-        .chat-input-area { padding: 15px 20px; background: white; border-top: 1px solid #ddd; display: flex; gap: 10px; }
-        .chat-input-area input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; outline: none; }
-        .chat-input-area input:focus { border-color: #0078d4; }
-        
-        /* HR Queue Table */
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.9em; }
-        th { background: #f8f9fa; }
-        
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --primary-light: #eff6ff;
+            --primary-glow: rgba(37, 99, 235, 0.15);
+            
+            --slate-900: #0f172a;
+            --slate-800: #1e293b;
+            --slate-700: #334155;
+            --slate-600: #475569;
+            --slate-500: #64748b;
+            --slate-400: #94a3b8;
+            --slate-300: #cbd5e1;
+            --slate-200: #e2e8f0;
+            --slate-100: #f1f5f9;
+            --slate-50: #f8fafc;
+            
+            --emerald-600: #059669;
+            --emerald-500: #10b981;
+            --emerald-100: #d1fae5;
+            --emerald-50: #ecfdf5;
+            
+            --amber-600: #d97706;
+            --amber-500: #f59e0b;
+            --amber-100: #fef3c7;
+            --amber-50: #fffbeb;
+            
+            --rose-600: #e11d48;
+            --rose-500: #f43f5e;
+            --rose-100: #ffe4e6;
+            --rose-50: #fff1f2;
+            
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --radius-xl: 20px;
+            
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: var(--font-sans);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--slate-50);
+            color: var(--slate-800);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Header --- */
+        header {
+            background: linear-gradient(180deg, var(--slate-900) 0%, #172554 100%);
+            color: white;
+            padding: 14px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .brand-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(to right, #ffffff, #93c5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .brand-subtitle {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #60a5fa;
+            margin-top: -2px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--slate-200);
+            backdrop-filter: blur(8px);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        .user-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: white;
+        }
+
+        .user-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: white;
+        }
+
+        /* --- Buttons --- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent;
+            outline: none;
+            white-space: nowrap;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-primary {
+            background: linear-gradient(180deg, #3b82f6 0%, var(--primary) 100%);
+            color: white;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(180deg, #2563eb 0%, var(--primary-hover) 100%);
+            box-shadow: 0 4px 8px rgba(37, 99, 235, 0.35);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--slate-700);
+            border-color: var(--slate-300);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--slate-100);
+            color: var(--slate-900);
+            border-color: var(--slate-400);
+        }
+
+        .btn-success {
+            background: linear-gradient(180deg, #10b981 0%, var(--emerald-600) 100%);
+            color: white;
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: linear-gradient(180deg, #059669 0%, #047857 100%);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.35);
+        }
+
+        .btn-danger {
+            background: var(--rose-50);
+            color: var(--rose-600);
+            border-color: var(--rose-100);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: var(--rose-600);
+            color: white;
+            border-color: var(--rose-600);
+            box-shadow: 0 4px 8px rgba(225, 29, 72, 0.25);
+        }
+
+        .btn-header {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.25);
+            font-size: 0.8rem;
+            padding: 6px 12px;
+        }
+
+        .btn-header:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: white;
+        }
+
+        /* --- Badges --- */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge.received { background: var(--slate-100); color: var(--slate-700); border: 1px solid var(--slate-200); }
+        .badge.extracting { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .badge.needs-information { background: var(--amber-50); color: #92400e; border: 1px solid #fde68a; }
+        .badge.validated { background: var(--emerald-50); color: #065f46; border: 1px solid #a7f3d0; }
+        .badge.created { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+        .badge.failed { background: var(--rose-50); color: #9f1239; border: 1px solid #fecdd3; }
+
+        /* --- Layout Containers --- */
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .card {
+            background: white;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--slate-200);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+            transition: box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* --- Quick Metrics Bar --- */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: white;
+            border: 1px solid var(--slate-200);
+            border-radius: var(--radius-md);
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .metric-icon-box {
+            width: 46px;
+            height: 46px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--slate-900);
+            line-height: 1.1;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--slate-500);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* --- Setup Section --- */
+        .setup-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--slate-100);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setup-header h2 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--slate-900);
+        }
+
+        .setup-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            padding: 24px;
+        }
+
+        @media (max-width: 860px) {
+            .setup-grid { grid-template-columns: 1fr; }
+        }
+
+        .setup-box {
+            background: var(--slate-50);
+            border: 1px solid var(--slate-200);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .setup-box h3 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--slate-800);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--slate-600);
+        }
+
+        .form-select, .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--slate-300);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            color: var(--slate-800);
+            background: white;
+            transition: all 0.15s ease;
+            outline: none;
+        }
+
+        .form-select:focus, .form-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .consent-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid var(--slate-200);
+            border-radius: var(--radius-sm);
+        }
+
+        .consent-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        /* --- Main Workspace (Two Columns) --- */
+        #main-workspace {
+            display: none;
+            gap: 24px;
+            height: calc(100vh - 120px);
+            min-height: 680px;
+        }
+
+        /* Left Column: Candidate Profile */
+        .workspace-profile {
+            flex: 0 0 380px;
+            background: white;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--slate-200);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .profile-top-banner {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--slate-100);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--slate-50);
+        }
+
+        .profile-title-text {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: var(--slate-900);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .profile-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            flex: 1;
+        }
+
+        .avatar-section {
+            text-align: center;
+            padding: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .avatar-wrap {
+            position: relative;
+            width: 80px;
+            height: 80px;
+        }
+
+        .avatar-img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        .avatar-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--slate-100), var(--slate-200));
+            border: 2px dashed var(--slate-300);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: var(--slate-400);
+        }
+
+        /* Celebration Card */
+        .celebration-card {
+            background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            color: white;
+            text-align: center;
+            box-shadow: 0 8px 20px rgba(5, 150, 105, 0.25);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .celebration-card::before {
+            content: '';
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .celebration-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            align-self: center;
+        }
+
+        .emp-id-display {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #a7f3d0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .copy-icon-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            transition: opacity 0.15s;
+        }
+
+        .copy-icon-btn:hover { opacity: 1; }
+
+        .dispatch-box {
+            background: white;
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            color: var(--slate-800);
+            text-align: left;
+        }
+
+        .dispatch-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        /* Profile Fields List */
+        .profile-section-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--slate-400);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .fields-container {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 12px;
+            background: var(--slate-50);
+            border: 1px solid var(--slate-100);
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            transition: background 0.15s;
+        }
+
+        .field-item:hover {
+            background: #f1f5f9;
+            border-color: var(--slate-200);
+        }
+
+        .field-label-text {
+            color: var(--slate-500);
+            font-weight: 500;
+            font-size: 0.82rem;
+            min-width: 100px;
+        }
+
+        .field-val-text {
+            color: var(--slate-900);
+            font-weight: 600;
+            flex: 1;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        .field-edit-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 10px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .field-edit-btn:hover {
+            background: var(--primary-light);
+        }
+
+        /* Document Checklist */
+        .doc-list-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .doc-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: white;
+            border: 1px solid var(--slate-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+
+        .doc-title {
+            font-weight: 700;
+            color: var(--slate-800);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .doc-meta {
+            font-size: 0.75rem;
+            color: var(--slate-500);
+        }
+
+        /* Action Buttons Area */
+        .workspace-actions {
+            margin-top: auto;
+            padding: 20px;
+            background: var(--slate-50);
+            border-top: 1px solid var(--slate-200);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Right Column: Agent Chat */
+        .workspace-chat {
+            flex: 1;
+            background: white;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--slate-200);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-top-bar {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--slate-200);
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-agent-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-agent-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, #10b981, #059669);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+        }
+
+        .chat-agent-name {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--slate-900);
+        }
+
+        .chat-agent-status {
+            font-size: 0.75rem;
+            color: var(--slate-500);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chat-body {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background: #fafcff;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .msg-bubble {
+            max-width: 78%;
+            padding: 12px 18px;
+            border-radius: var(--radius-lg);
+            font-size: 0.92rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-bubble.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        .msg-bubble.agent {
+            align-self: flex-start;
+            background: white;
+            color: var(--slate-800);
+            border: 1px solid var(--slate-200);
+            border-bottom-left-radius: 4px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .msg-bubble.system {
+            align-self: center;
+            background: var(--amber-50);
+            color: #92400e;
+            border: 1px solid #fde68a;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 6px 16px;
+            border-radius: 30px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Modern Upload Zone */
+        .drop-area {
+            margin: 16px 24px 0 24px;
+            border: 2px dashed #93c5fd;
+            background: #eff6ff;
+            border-radius: var(--radius-md);
+            padding: 22px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drop-area:hover, .drop-area.dragover {
+            background: #dbeafe;
+            border-color: var(--primary);
+            transform: scale(1.005);
+        }
+
+        .drop-icon {
+            font-size: 28px;
+            color: var(--primary);
+        }
+
+        .drop-text {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--slate-700);
+        }
+
+        .drop-subtext {
+            font-size: 0.75rem;
+            color: var(--slate-500);
+        }
+
+        /* Chat Input Bar */
+        .chat-input-bar {
+            padding: 16px 24px;
+            background: white;
+            border-top: 1px solid var(--slate-200);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .chat-input-field {
+            flex: 1;
+            padding: 12px 18px;
+            border: 1px solid var(--slate-300);
+            border-radius: 30px;
+            font-size: 0.92rem;
+            outline: none;
+            transition: all 0.15s ease;
+            background: var(--slate-50);
+        }
+
+        .chat-input-field:focus {
+            background: white;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        /* --- HR Queue Data Grid --- */
+        .queue-header-bar {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--slate-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .queue-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .queue-search-input {
+            padding: 8px 14px;
+            border: 1px solid var(--slate-300);
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            outline: none;
+            width: 240px;
+        }
+
+        .queue-search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        .data-table th {
+            padding: 14px 20px;
+            background: var(--slate-50);
+            color: var(--slate-500);
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--slate-200);
+        }
+
+        .data-table td {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--slate-100);
+            font-size: 0.88rem;
+            color: var(--slate-800);
+            vertical-align: middle;
+        }
+
+        .data-table tr:hover td {
+            background: #f8fafc;
+        }
+
+        .id-badge {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--slate-600);
+            background: var(--slate-100);
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--slate-200);
+        }
+
+        /* --- Full Profile Modal --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-box {
+            background: white;
+            border-radius: var(--radius-xl);
+            width: 100%;
+            max-width: 650px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--slate-100);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--slate-50);
+        }
+
+        .modal-body {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--slate-100);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: var(--slate-50);
+        }
+
+        /* --- Toast Notifications --- */
+        #toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .toast {
+            pointer-events: auto;
+            background: white;
+            color: var(--slate-900);
+            border-radius: var(--radius-md);
+            padding: 12px 18px;
+            box-shadow: var(--shadow-xl);
+            border-left: 4px solid var(--primary);
+            font-size: 0.88rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 280px;
+            max-width: 420px;
+            animation: slideIn 0.25s ease forwards;
+        }
+
+        .toast.success { border-left-color: var(--emerald-500); }
+        .toast.error { border-left-color: var(--rose-500); }
+        .toast.warning { border-left-color: var(--amber-500); }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
+<!-- Header Navigation -->
 <header>
-    <div>
-        <strong style="font-size: 1.2em;">🤖 Foundry Agent · Employee Onboarding</strong>
+    <div class="brand">
+        <div class="brand-icon">🤖</div>
+        <div>
+            <div class="brand-title">Foundry AI Agent</div>
+            <div class="brand-subtitle">HR & Employee Onboarding Workspace</div>
+        </div>
     </div>
-    <div class="user-info">
-        <span id="auth-status">Checking auth...</span>
-        <button id="btn-sign-in" onclick="signInWithPrompt()" style="margin-left: 8px; padding: 4px 10px; font-size: 0.82em; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer;">🔑 Sign In / Switch</button> | 
-        <span id="user-name"></span>
-        <button id="btn-back-hr" class="btn-secondary hidden" style="margin-left: 15px; padding: 4px 8px; font-size: 0.8em;" onclick="closeWorkspace()">← Back to HR Queue</button>
+    
+    <div class="header-actions">
+        <div class="status-chip">
+            <span class="status-dot"></span>
+            <span id="auth-status">Checking auth...</span>
+        </div>
+        
+        <div class="user-chip" id="user-chip-container">
+            <div class="user-avatar" id="user-avatar">HR</div>
+            <span id="user-name">Authenticating...</span>
+        </div>
+        
+        <button id="btn-sign-in" onclick="signInWithPrompt()" class="btn btn-header">🔄 Switch Account</button>
+        <button id="btn-back-hr" onclick="closeWorkspace()" class="btn btn-header hidden">← Back to HR Queue</button>
     </div>
 </header>
 
-<div id="setup-section" class="section-container">
-    <h2>Case Setup</h2>
-    <div class="setup-row">
-        <div class="setup-group">
-            <h3>Create New Case</h3>
-            <label>Department:
-                <select id="new-dept">
-                    <option value="engineering">Engineering</option>
-                    <option value="sales">Sales</option>
-                    <option value="hr">HR</option>
-                    <option value="other">Other</option>
-                </select>
-            </label>
-            <br><br>
-            <label>
-                <input type="checkbox" id="new-consent"> Employee Consent Received
-            </label>
-            <br><br>
-            <button onclick="createNewCase()">Create Case</button>
+<div class="container">
+    <!-- Quick Metrics Bar -->
+    <div class="metrics-grid" id="metrics-bar">
+        <div class="metric-card">
+            <div class="metric-icon-box" style="background: #eff6ff; color: #2563eb;">📋</div>
+            <div>
+                <div class="metric-value" id="metric-total">0</div>
+                <div class="metric-label">Total Cases</div>
+            </div>
         </div>
-        <div class="setup-group">
-            <h3>Resume Case</h3>
-            <label>Case ID: <input type="text" id="resume-id" placeholder="UUID"></label>
-            <br><br>
-            <button onclick="resumeCase()">Resume</button>
+        <div class="metric-card">
+            <div class="metric-icon-box" style="background: #fef3c7; color: #d97706;">⏳</div>
+            <div>
+                <div class="metric-value" id="metric-active">0</div>
+                <div class="metric-label">In Progress</div>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-icon-box" style="background: #ecfdf5; color: #059669;">🎉</div>
+            <div>
+                <div class="metric-value" id="metric-created">0</div>
+                <div class="metric-label">Onboarded</div>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-icon-box" style="background: #fff1f2; color: #e11d48;">🧹</div>
+            <div>
+                <div class="metric-value" id="metric-failed">0</div>
+                <div class="metric-label">Failed / Clearable</div>
+            </div>
         </div>
     </div>
-</div>
 
-<div id="main-workspace">
-    <!-- Profile Panel -->
-    <div class="profile-panel">
-        <div class="profile-header">
-            <strong>👤 EMPLOYEE PROFILE</strong>
-            <span id="case-status-badge" class="badge received">Received</span>
+    <!-- Case Setup Card (collapsed when workspace is open) -->
+    <div id="setup-section" class="card">
+        <div class="setup-header">
+            <h2>🚀 Onboarding Case Launchpad</h2>
+            <span style="font-size: 0.85rem; color: var(--slate-500);">Start a new onboarding cycle or load an existing file</span>
         </div>
+        
+        <div class="setup-grid">
+            <div class="setup-box">
+                <h3>✨ Create New Onboarding Case</h3>
+                <div class="form-group">
+                    <label class="form-label" for="new-dept">Target Department</label>
+                    <select id="new-dept" class="form-select">
+                        <option value="engineering">Engineering</option>
+                        <option value="sales">Sales & Marketing</option>
+                        <option value="hr">Human Resources</option>
+                        <option value="operations">Operations & Finance</option>
+                        <option value="other">General / Other</option>
+                    </select>
+                </div>
+                
+                <label class="consent-row" for="new-consent">
+                    <input type="checkbox" id="new-consent" checked>
+                    <span style="font-size: 0.85rem; font-weight: 500; color: var(--slate-700);">
+                        Candidate Consent Verified (Compliant with Data Privacy Policy)
+                    </span>
+                </label>
+                
+                <button onclick="createNewCase()" class="btn btn-primary" style="margin-top: 4px;">
+                    ⚡ Launch Case & Connect Agent
+                </button>
+            </div>
 
-        <!-- Onboarding Complete Celebration Card -->
-        <div id="onboarding-success-card" class="hidden" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border: 2px solid #4caf50; border-radius: 8px; padding: 12px; margin: 10px 0 15px 0; text-align: center;">
-            <div style="font-size: 1.1em; font-weight: bold; color: #2e7d32; margin-bottom: 6px;">🎉 Onboarding Complete!</div>
-            <div id="success-welcome-msg" style="font-size: 0.9em; color: #1b5e20; margin-bottom: 10px; font-weight: 500;"></div>
-            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Official Employee ID</div>
-                <div id="success-emp-id" style="font-size: 1.3em; font-weight: 800; color: #0078d4; letter-spacing: 1px;"></div>
+            <div class="setup-box">
+                <h3>🔍 Resume Existing Case</h3>
+                <div class="form-group">
+                    <label class="form-label" for="resume-id">Enter Case UUID</label>
+                    <input type="text" id="resume-id" class="form-input" placeholder="e.g. d9be2c05-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                </div>
+                
+                <div style="flex: 1;"></div>
+                
+                <button onclick="resumeCase()" class="btn btn-secondary">
+                    📂 Load Into Workspace
+                </button>
             </div>
-            <div style="background: white; border-radius: 6px; padding: 8px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Start Working Date</div>
-                <div id="success-start-date" style="font-size: 1.05em; font-weight: 700; color: #333;"></div>
+        </div>
+    </div>
+
+    <!-- Main Workspace (Active Case) -->
+    <div id="main-workspace">
+        <!-- Left Column: Employee Profile Panel -->
+        <div class="workspace-profile">
+            <div class="profile-top-banner">
+                <span class="profile-title-text">👤 Candidate Profile</span>
+                <span id="case-status-badge" class="badge received">Received</span>
             </div>
-            <div id="success-email-box" style="background: #eef6ff; border-radius: 6px; padding: 10px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #b9d7ea;">
-                <div style="font-size: 0.75em; text-transform: uppercase; color: #005a9e; font-weight: bold;">Official Welcome Email</div>
-                <div id="success-email-text" style="font-size: 0.85em; color: #004578; margin: 4px 0 8px 0; word-break: break-all;">✉️ Ready to dispatch</div>
-                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
-                    <button id="btn-open-gmail" onclick="openWelcomeEmailClient('gmail')" style="font-size: 0.78em; padding: 5px 10px; background: #ea4335; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🚀 Send via Gmail</button>
-                    <button id="btn-open-mailto" onclick="openWelcomeEmailClient('mailto')" style="font-size: 0.78em; padding: 5px 10px; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✉️ Send via Mail App</button>
-                    <button id="btn-resend-email" onclick="resendWelcomeEmail()" style="font-size: 0.78em; padding: 5px 8px; background: #475569; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡ Server Dispatch</button>
+
+            <div class="profile-body">
+                <!-- Avatar Preview -->
+                <div class="avatar-section">
+                    <div class="avatar-wrap">
+                        <div id="profile-photo-placeholder" class="avatar-placeholder">👤</div>
+                        <img id="profile-photo-img" src="" alt="Employee Photo" class="avatar-img hidden">
+                    </div>
+                </div>
+
+                <!-- Celebration Card (When employee_id exists) -->
+                <div id="onboarding-success-card" class="celebration-card hidden">
+                    <div class="celebration-badge">✨ Verification Complete</div>
+                    <h3 style="font-size: 1.15rem; font-weight: 800;">🎉 Onboarding Approved!</h3>
+                    <p id="success-welcome-msg" style="font-size: 0.82rem; opacity: 0.95;"></p>
+                    
+                    <div class="emp-id-display">
+                        <span id="success-emp-id">EMP-XXXXXX</span>
+                        <button onclick="copyToClipboard(document.getElementById('success-emp-id').innerText)" class="copy-icon-btn" title="Copy Employee ID">📋</button>
+                    </div>
+
+                    <div style="font-size: 0.82rem; opacity: 0.9;">
+                        🗓️ Official Start Date: <strong id="success-start-date" style="color: #a7f3d0;">Assigned</strong>
+                    </div>
+
+                    <div class="dispatch-box">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 800; color: var(--slate-500); letter-spacing: 0.05em;">Dispatch Congratulations Email</div>
+                        <div id="success-email-text" style="font-size: 0.8rem; color: var(--primary); margin: 3px 0 8px 0; word-break: break-all; font-weight: 600;">✉️ Ready</div>
+                        
+                        <div class="dispatch-buttons">
+                            <button id="btn-open-gmail" onclick="openWelcomeEmailClient('gmail')" class="btn" style="background: #ea4335; color: white; padding: 6px 10px; font-size: 0.78rem;">🚀 Gmail Web</button>
+                            <button id="btn-open-mailto" onclick="openWelcomeEmailClient('mailto')" class="btn" style="background: #0078d4; color: white; padding: 6px 10px; font-size: 0.78rem;">✉️ System Mail</button>
+                        </div>
+                        <button id="btn-resend-email" onclick="resendWelcomeEmail()" class="btn btn-secondary" style="width: 100%; margin-top: 6px; padding: 5px; font-size: 0.75rem;">⚡ Server Auto-Dispatch (0 Credits)</button>
+                    </div>
+
+                    <button onclick="openFullProfileModal()" class="btn" style="background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.4); font-size: 0.82rem; margin-top: 4px;">
+                        📄 View Full Record & Dossier
+                    </button>
+                </div>
+
+                <!-- Missing Fields Banner -->
+                <div id="missing-section" class="hidden" style="background: var(--amber-50); border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 12px; font-size: 0.82rem; color: #92400e;">
+                    <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        ⚠️ Outstanding Documents Required
+                    </div>
+                    <div id="missing-list" style="font-weight: 600; color: #b45309;"></div>
+                </div>
+
+                <!-- Auto-Extracted Details -->
+                <div>
+                    <div class="profile-section-title">
+                        <span>Extracted Profile Data</span>
+                        <span style="font-size: 0.7rem; color: var(--emerald-600); font-weight: 600;">● OCR Sync Active</span>
+                    </div>
+                    <div class="fields-container" id="profile-fields">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Document Checklist -->
+                <div>
+                    <div class="profile-section-title">
+                        <span>Uploaded Documents</span>
+                        <span id="doc-count-badge" style="font-size: 0.7rem; color: var(--slate-500);">0 files</span>
+                    </div>
+                    <div class="doc-list-container" id="document-list">
+                        <!-- Populated by JS -->
+                    </div>
                 </div>
             </div>
-            <button onclick="openFullProfileModal()" style="width: 100%; font-size: 0.9em; padding: 8px; background: #2e7d32; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;">📋 View Full Employee Profile</button>
-        </div>
 
-        <div id="profile-photo-container" style="text-align: center; margin: 10px 0 15px 0;">
-            <div id="profile-photo-placeholder" style="width: 70px; height: 70px; border-radius: 50%; background: #e9ecef; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #6c757d; border: 2px dashed #ced4da;">👤</div>
-            <img id="profile-photo-img" src="" alt="Employee Photo" class="hidden" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; margin: 0 auto; border: 2px solid #0078d4;">
-        </div>
-        
-        <div class="section-title">Details</div>
-        <div id="profile-fields">
-            <!-- Dynamically populated -->
-        </div>
+            <!-- Workspace Actions Bottom Bar -->
+            <div class="workspace-actions">
+                <button id="btn-validate" onclick="validateCase()" class="btn btn-primary" style="width: 100%; padding: 11px;">
+                    🛡️ Validate Case & Generate ID
+                </button>
+                
+                <button id="btn-export-profile" onclick="exportProfile()" class="btn btn-secondary" style="width: 100%;">
+                    📥 Export Profile (Excel)
+                </button>
 
-        <div class="section-title">Documents</div>
-        <div id="document-list">
-            <!-- Dynamically populated -->
-        </div>
-        
-        <div id="missing-section" class="missing-fields hidden">
-            <strong>── Missing ──</strong>
-            <div id="missing-list"></div>
-        </div>
+                <div id="lbl-hr-checkbox" class="consent-row hidden" style="margin: 4px 0;">
+                    <input type="checkbox" id="chk-hr-review">
+                    <span style="font-size: 0.82rem; font-weight: 700; color: var(--slate-800);">Attest HR Compliance Review</span>
+                </div>
 
-        <div class="actions-section">
-            <button id="btn-validate" onclick="validateCase()">Validate Case</button>
-            <button id="btn-export-profile" class="btn-secondary" onclick="exportProfile()">Export Profile (Excel)</button>
-            <label id="lbl-hr-checkbox" class="hidden">
-                <input type="checkbox" id="chk-hr-review"> HR Review Complete
-            </label>
-            <button id="btn-create-employee" class="btn-success hidden" onclick="finalizeCase()">Create Employee</button>
-            <button id="btn-download-confirmation" class="btn-secondary hidden" onclick="downloadConfirmation()">Download Confirmation</button>
-            <button id="btn-withdraw-consent" class="btn-danger" onclick="withdrawConsent()" style="margin-top: 10px;">Withdraw Consent</button>
-            <button id="btn-delete-case" onclick="deleteCurrentCase()" style="background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; margin-top: 8px; width: 100%;">🗑️ Delete Case</button>
-        </div>
-    </div>
+                <button id="btn-create-employee" onclick="finalizeCase()" class="btn btn-success hidden" style="width: 100%; padding: 11px;">
+                    ✅ Finalize & Create Employee
+                </button>
 
-    <!-- Chat Panel -->
-    <div class="chat-panel">
-        <div class="chat-messages" id="chat-history">
-            <div class="msg agent">🤖 Welcome! I'm your onboarding assistant. Upload PAN card, Aadhaar, resume, and photo to get started.</div>
-        </div>
-        
-        <div class="upload-zone" id="drop-zone">
-            <input type="file" id="file-input" multiple style="display: none;">
-            📎 <strong>Drag & drop documents here</strong> or click to browse
-        </div>
-        
-        <div class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="handleChatKey(event)">
-            <button onclick="sendChatMessage()">Send</button>
-        </div>
-    </div>
-</div>
+                <button id="btn-download-confirmation" onclick="downloadConfirmation()" class="btn btn-secondary hidden" style="width: 100%;">
+                    📜 Download Official Confirmation (JSON)
+                </button>
 
-<div id="hr-queue-section" class="section-container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h2>HR Queue</h2>
-        <div>
-            <button onclick="loadHrQueue()" class="btn-secondary">Refresh</button>
-            <button onclick="exportQueue('csv')" class="btn-secondary">Export CSV</button>
-            <button onclick="exportQueue('xlsx')" class="btn-secondary">Export XLSX</button>
-            <button onclick="clearFailedCases()" class="btn-secondary" style="background: #fff0f0; color: #d32f2f; border: 1px solid #ffcdd2;">🧹 Clear Failed</button>
-        </div>
-    </div>
-    <div style="overflow-x: auto;">
-        <table id="hr-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Status</th>
-                    <th>Name</th>
-                    <th>Department</th>
-                    <th>Created At</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="hr-table-body">
-                <!-- Populated via API -->
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Full Employee Profile Detailed Modal -->
-<div id="full-profile-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
-    <div style="background: white; border-radius: 12px; width: 92%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: 25px; box-shadow: 0 12px 36px rgba(0,0,0,0.3); border-top: 5px solid #0078d4;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e0e0e0; padding-bottom: 12px; margin-bottom: 16px;">
-            <div style="font-size: 1.25em; font-weight: bold; color: #12283d;">👤 Official Employee Profile</div>
-            <button onclick="closeFullProfileModal()" style="background: none; border: none; font-size: 1.6em; cursor: pointer; color: #888; line-height: 1;">&times;</button>
-        </div>
-        
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div id="modal-photo-placeholder" style="width: 80px; height: 80px; border-radius: 50%; background: #e9ecef; margin: 0 auto 10px auto; display: flex; align-items: center; justify-content: center; font-size: 36px; color: #6c757d; border: 2px dashed #ced4da;">👤</div>
-            <img id="modal-photo-img" src="" alt="Employee Photo" class="hidden" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 10px auto; border: 3px solid #0078d4; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-            <h2 id="modal-emp-name" style="margin: 0 0 6px 0; color: #12283d; font-size: 1.4em;"></h2>
-            <div style="display: inline-block; background: #0078d4; color: white; padding: 5px 14px; border-radius: 20px; font-weight: 800; font-size: 0.95em; letter-spacing: 0.5px;">
-                Employee ID: <span id="modal-emp-id-badge"></span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
+                    <button id="btn-withdraw-consent" onclick="withdrawConsent()" class="btn btn-danger" style="font-size: 0.78rem; padding: 7px;">
+                        Withdraw Consent
+                    </button>
+                    <button id="btn-delete-case" onclick="deleteCurrentCase()" class="btn btn-danger" style="font-size: 0.78rem; padding: 7px; background: #fff1f2;">
+                        🗑️ Delete Case
+                    </button>
+                </div>
             </div>
         </div>
 
-        <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 18px; border: 1px solid #e2e8f0;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569; width: 42%;">Start Working Date:</td><td id="modal-start-date" style="padding: 9px 0; font-weight: 700; color: #166534;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Department:</td><td id="modal-dept" style="padding: 9px 0; text-transform: uppercase; font-weight: 600; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Email Address:</td><td id="modal-email" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Phone Number:</td><td id="modal-phone" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">PAN Card:</td><td id="modal-pan" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Aadhaar Number:</td><td id="modal-aadhaar" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Date of Birth:</td><td id="modal-dob" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Residential Address:</td><td id="modal-address" style="padding: 9px 0; color: #1e293b;"></td></tr>
-                <tr style="border-bottom: 1px solid #edf2f7;"><td style="padding: 9px 0; font-weight: 600; color: #475569;">Welcome Email:</td><td id="modal-email-status" style="padding: 9px 0; color: #166534; font-weight: 600;">✉️ Sent</td></tr>
-                <tr><td style="padding: 9px 0; font-weight: 600; color: #475569;">Onboarding Status:</td><td id="modal-status" style="padding: 9px 0; color: #166534; font-weight: 700;">✅ Active / Verified</td></tr>
-            </table>
+        <!-- Right Column: Agent Chat & Extraction Console -->
+        <div class="workspace-chat">
+            <div class="chat-top-bar">
+                <div class="chat-agent-info">
+                    <div class="chat-agent-avatar">🤖</div>
+                    <div>
+                        <div class="chat-agent-name">Foundry Onboarding Agent</div>
+                        <div class="chat-agent-status">
+                            <span class="status-dot"></span>
+                            <span>Azure Document Intelligence OCR Online · GPT-4o</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="id-badge" id="case-id-chip">Case: None</span>
+                    <button onclick="copyToClipboard(currentCaseId)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" title="Copy Case ID">📋</button>
+                </div>
+            </div>
+
+            <!-- Upload Drop Area -->
+            <div class="drop-area" id="drop-zone">
+                <input type="file" id="file-input" multiple style="display: none;">
+                <div class="drop-icon">📎</div>
+                <div class="drop-text">Drag & drop candidate documents here, or click to browse</div>
+                <div class="drop-subtext">Supports PAN, Aadhaar, Resume, Photograph (PDF, PNG, JPG) · Automated Classification</div>
+            </div>
+
+            <!-- Chat Messages Log -->
+            <div class="chat-body" id="chat-history">
+                <div class="msg-bubble agent">
+                    👋 Welcome! I am your AI Onboarding Assistant. Upload the candidate's PAN Card, Aadhaar Card, Resume, and Photo. I'll automatically extract all fields, resolve data conflicts, and prepare the official employee profile.
+                </div>
+            </div>
+
+            <!-- Message Input Area -->
+            <div class="chat-input-bar">
+                <input type="text" id="chat-input" class="chat-input-field" placeholder="Ask agent e.g. 'What documents are missing?' or 'Verify candidate'..." onkeypress="handleChatKey(event)">
+                <button onclick="sendChatMessage()" class="btn btn-primary" style="border-radius: 30px; padding: 10px 22px;">
+                    Send ➤
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HR Queue Data Grid -->
+    <div id="hr-queue-section" class="card">
+        <div class="queue-header-bar">
+            <div class="queue-title-wrap">
+                <h2 style="font-size: 1.15rem; font-weight: 700;">HR Candidate Queue</h2>
+                <input type="text" id="queue-search" class="queue-search-input" placeholder="🔍 Search name, case ID, dept..." oninput="filterQueueTable()">
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button onclick="loadHrQueue()" class="btn btn-secondary">🔄 Refresh</button>
+                <button onclick="exportQueue('csv')" class="btn btn-secondary">📊 Export CSV</button>
+                <button onclick="exportQueue('xlsx')" class="btn btn-secondary">📥 Export XLSX</button>
+                <button onclick="clearFailedCases()" class="btn btn-danger" style="background: #fff1f2;">🧹 Clear Failed</button>
+            </div>
         </div>
 
-        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
-            <button onclick="openWelcomeEmailClient('gmail')" class="btn-secondary" style="padding: 8px 14px; background: #ea4335; color: white; font-weight: bold;">🚀 Send via Gmail</button>
-            <button onclick="openWelcomeEmailClient('mailto')" class="btn-secondary" style="padding: 8px 14px; background: #0078d4; color: white; font-weight: bold;">✉️ Send via Mail App</button>
-            <button onclick="resendWelcomeEmail()" class="btn-secondary" style="padding: 8px 12px; background: #475569; color: white;">⚡ Server Dispatch</button>
-            <button onclick="exportProfile()" class="btn-primary" style="background: #2e7d32; padding: 8px 16px;">📥 Export Profile (Excel)</button>
-            <button onclick="closeFullProfileModal()" class="btn-secondary" style="padding: 8px 16px;">Close</button>
+        <div class="table-responsive">
+            <table class="data-table" id="hr-table">
+                <thead>
+                    <tr>
+                        <th>Case ID</th>
+                        <th>Status</th>
+                        <th>Candidate Name</th>
+                        <th>Department</th>
+                        <th>Created At</th>
+                        <th style="text-align: right; padding-right: 24px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="hr-table-body">
+                    <!-- Populated dynamically via JS -->
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
+<!-- Full Profile Dossier Modal -->
+<div id="full-profile-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--slate-900);">📄 Official Employee Profile Dossier</div>
+            <button onclick="closeFullProfileModal()" class="btn btn-secondary" style="padding: 4px 10px; border-radius: 50%; font-size: 1.1rem; line-height: 1;">&times;</button>
+        </div>
+
+        <div class="modal-body">
+            <div style="display: flex; align-items: center; gap: 20px; background: var(--slate-50); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--slate-200);">
+                <div class="avatar-wrap">
+                    <div id="modal-photo-placeholder" class="avatar-placeholder">👤</div>
+                    <img id="modal-photo-img" src="" alt="Employee Photo" class="avatar-img hidden">
+                </div>
+                <div>
+                    <h2 id="modal-emp-name" style="font-size: 1.35rem; font-weight: 800; color: var(--slate-900); margin-bottom: 4px;">Candidate Name</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span class="id-badge" style="font-size: 0.95rem; font-weight: 700; color: var(--primary); background: #dbeafe;" id="modal-emp-id-badge">EMP-XXXXXX</span>
+                        <span id="modal-status" class="badge validated">Validated</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.88rem;">
+                <div class="field-item">
+                    <span class="field-label-text">Start Working Date:</span>
+                    <span id="modal-start-date" class="field-val-text" style="color: var(--emerald-600); font-weight: 700;"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Department:</span>
+                    <span id="modal-dept" class="field-val-text" style="text-transform: uppercase;"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Email Address:</span>
+                    <span id="modal-email" class="field-val-text"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Phone Number:</span>
+                    <span id="modal-phone" class="field-val-text"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">PAN Card:</span>
+                    <span id="modal-pan" class="field-val-text font-mono"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Aadhaar:</span>
+                    <span id="modal-aadhaar" class="field-val-text font-mono"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Date of Birth:</span>
+                    <span id="modal-dob" class="field-val-text"></span>
+                </div>
+                <div class="field-item">
+                    <span class="field-label-text">Dispatch Status:</span>
+                    <span id="modal-email-status" class="field-val-text" style="color: var(--primary); font-weight: 700;"></span>
+                </div>
+            </div>
+
+            <div class="field-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                <span class="field-label-text">Registered Address:</span>
+                <span id="modal-address" class="field-val-text" style="text-align: left;"></span>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button onclick="resendWelcomeEmail()" class="btn btn-secondary">⚡ Resend Email</button>
+            <button onclick="exportProfile()" class="btn btn-success">📥 Download Excel Record</button>
+            <button onclick="closeFullProfileModal()" class="btn btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Toast Container -->
+<div id="toast-container"></div>
+
 <script>
-    // --- MSAL Auth ---
+    // --- Application State ---
     let authClient = null;
     let authAccount = null;
+    let currentCaseId = null;
+    let pollInterval = null;
+    let isExtracting = false;
+    let allQueueCases = [];
 
+    const PROFILE_FIELDS = [
+        { key: 'full_name', label: 'Full Name' },
+        { key: 'email', label: 'Email Address' },
+        { key: 'phone', label: 'Phone Number' },
+        { key: 'pan', label: 'PAN Number' },
+        { key: 'aadhaar', label: 'Aadhaar Number' },
+        { key: 'dob', label: 'Date of Birth' },
+        { key: 'address', label: 'Residential Address' },
+        { key: 'start_date', label: 'Start Date' }
+    ];
+
+    // --- Toast Notifications ---
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        const icons = {
+            success: '✅',
+            error: '❌',
+            warning: '⚠️',
+            info: 'ℹ️'
+        };
+        
+        toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    function copyToClipboard(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(`Copied to clipboard: ${text}`, 'success');
+        }).catch(() => {
+            showToast("Failed to copy text", 'error');
+        });
+    }
+
+    // --- MSAL Authentication ---
     async function initializeSignIn() {
         try {
             const res = await fetch('/api/auth/config', { cache: 'no-store' });
-            if (!res.ok) throw new Error("Could not fetch MSAL config");
+            if (!res.ok) throw new Error("Could not fetch MSAL configuration");
             const config = await res.json();
             window._authConfig = config;
 
-            // Development mode — skip MSAL entirely
             if (config.development) {
-                document.getElementById('auth-status').innerText = 'Development mode';
-                document.getElementById('user-name').innerText = 'Dev User';
-                authAccount = { username: 'dev', name: 'Dev User' };
+                document.getElementById('auth-status').innerText = 'Development Mode';
+                document.getElementById('user-name').innerText = 'Dev Admin';
+                document.getElementById('user-avatar').innerText = 'DV';
+                authAccount = { username: 'dev', name: 'Dev Admin' };
                 return true;
             }
             if (!config.configured) {
-                document.getElementById('auth-status').innerText = 'Auth not configured';
+                document.getElementById('auth-status').innerText = 'Config Pending';
                 return false;
             }
 
@@ -312,8 +1542,7 @@
                 }
             });
             await authClient.initialize();
-            
-            // Check for redirect response if any
+
             try {
                 const redirectResp = await authClient.handleRedirectPromise();
                 if (redirectResp && redirectResp.account) {
@@ -332,29 +1561,33 @@
                         account: authAccount
                     });
                     authAccount = silentResp.account || authAccount;
-                    document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
-                    document.getElementById('auth-status').innerText = 'Authenticated';
-                    document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+                    updateUserHeader(authAccount);
                     return true;
                 } catch(silentErr) {
                     console.warn("Silent token failed, using existing account display", silentErr);
-                    document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
-                    document.getElementById('auth-status').innerText = 'Sign-in required';
-                    document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
+                    updateUserHeader(authAccount, false);
                     return false;
                 }
             }
 
-            // No active accounts found in local storage
-            document.getElementById('auth-status').innerText = 'Sign-in required';
-            document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
+            document.getElementById('auth-status').innerText = 'Sign-In Required';
+            document.getElementById('user-name').innerText = 'Not Signed In';
             return false;
         } catch (error) {
-            console.error("Auth init error", error);
-            document.getElementById('auth-status').innerText = 'Sign-in required';
-            document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
+            console.error("Auth init error:", error);
+            document.getElementById('auth-status').innerText = 'Sign-In Required';
             return false;
         }
+    }
+
+    function updateUserHeader(acc, active = true) {
+        const displayName = acc.name || acc.username || 'HR Agent';
+        document.getElementById('user-name').innerText = displayName;
+        document.getElementById('auth-status').innerText = active ? 'Entra Connected' : 'Session Expired';
+        
+        // Initials avatar
+        const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'HR';
+        document.getElementById('user-avatar').innerText = initials;
     }
 
     async function signInWithPrompt() {
@@ -366,37 +1599,32 @@
                 prompt: 'select_account'
             });
             authAccount = response.account;
-            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
-            document.getElementById('auth-status').innerText = 'Authenticated';
-            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+            updateUserHeader(authAccount, true);
+            showToast(`Signed in as ${authAccount.name || authAccount.username}`, 'success');
             if (currentCaseId) await refreshProfile();
             loadHrQueue();
         } catch (err) {
             console.error("Sign-in error:", err);
-            document.getElementById('auth-status').innerText = 'Sign-in required';
+            document.getElementById('auth-status').innerText = 'Sign-In Required';
             if (err.errorCode !== 'user_cancelled') {
-                alert("Sign-in error: " + (err.errorMessage || err.message || err));
+                showToast("Sign-in failed: " + (err.errorMessage || err.message || err), 'error');
             }
         }
     }
 
     async function authHeaders() {
-        // Development mode — no auth headers needed
         if (window._authConfig && window._authConfig.development) return {};
         if (!authAccount && authClient) {
             const accs = authClient.getAllAccounts();
             if (accs.length > 0) authAccount = accs[0];
         }
         if (!authAccount || !authClient) {
-            // Interactive login triggered on user action
             const res = await authClient.loginPopup({
                 scopes: [window._authConfig.scope],
                 prompt: 'select_account'
             });
             authAccount = res.account;
-            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
-            document.getElementById('auth-status').innerText = 'Authenticated';
-            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+            updateUserHeader(authAccount, true);
         }
         try {
             const response = await authClient.acquireTokenSilent({
@@ -444,14 +1672,10 @@
             throw new Error(`API error (${res.status}): ${errorText}`);
         }
         
-        // Handle no content
         if (res.status === 204) return null;
-        
-        // Return blob if specified
         if (options.responseType === 'blob') {
             return await res.blob();
         }
-        
         return await res.json();
     }
 
@@ -460,48 +1684,39 @@
             await fn();
         } catch (e) {
             console.error(e);
-            alert(e.message);
+            showToast(e.message, 'error');
         }
     }
 
-    // --- Application State ---
-    let currentCaseId = null;
-    let pollInterval = null;
-    let isExtracting = false;
-
-    // Fields that map from profile auto-extraction
-    const PROFILE_FIELDS = [
-        { key: 'full_name', label: 'Full Name' },
-        { key: 'email', label: 'Email' },
-        { key: 'phone', label: 'Phone' },
-        { key: 'pan', label: 'PAN' },
-        { key: 'aadhaar', label: 'Aadhaar' },
-        { key: 'dob', label: 'Date of Birth' },
-        { key: 'address', label: 'Address' },
-        { key: 'start_date', label: 'Start Date' }
-    ];
-
-    // --- Dashboard UI Logic ---
+    // --- Workspace Views ---
     function showWorkspace() {
         document.getElementById('setup-section').style.display = 'none';
+        document.getElementById('hr-queue-section').style.display = 'none';
+        document.getElementById('metrics-bar').style.display = 'none';
         document.getElementById('main-workspace').style.display = 'flex';
         document.getElementById('btn-back-hr').classList.remove('hidden');
+        document.getElementById('case-id-chip').innerText = `Case: ${currentCaseId ? currentCaseId.substring(0,8) + '...' : 'None'}`;
     }
 
     function closeWorkspace() {
         document.getElementById('setup-section').style.display = 'block';
+        document.getElementById('hr-queue-section').style.display = 'block';
+        document.getElementById('metrics-bar').style.display = 'grid';
         document.getElementById('main-workspace').style.display = 'none';
         document.getElementById('btn-back-hr').classList.add('hidden');
         currentCaseId = null;
         stopPolling();
+        loadHrQueue();
     }
 
+    // --- Case Actions ---
     async function createNewCase() {
         const dept = document.getElementById('new-dept').value;
         const consent = document.getElementById('new-consent').checked;
-        if (!consent) return alert("Consent required to proceed.");
+        if (!consent) return showToast("Candidate consent confirmation is required.", 'warning');
         
         run(async () => {
+            showToast("Creating new onboarding case...", 'info');
             const caseData = await api('/api/cases', {
                 method: 'POST',
                 body: { department: dept, consent: true }
@@ -509,7 +1724,7 @@
             currentCaseId = caseData.id;
             showWorkspace();
             await refreshProfile();
-            addSystemMessage("Case created. Initializing Foundry Agent...");
+            addSystemMessage("Case initialized. Connecting to Foundry Agent...");
             
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
@@ -517,10 +1732,10 @@
                     body: { message: "I'm starting a new employee onboarding. What documents do you need?" }
                 });
                 appendChatMessage('user', "I'm starting a new employee onboarding. What documents do you need?");
-                appendChatMessage('agent', resp.response || resp.message || "Message received");
+                appendChatMessage('agent', resp.response || resp.message || "Ready. Please upload PAN, Aadhaar, Resume, and Photo.");
             } catch (chatErr) {
                 console.warn("Initial chat greeting error:", chatErr);
-                addSystemMessage("Agent ready. Upload your PAN card, Aadhaar, or resume to begin.");
+                addSystemMessage("Agent ready. Upload your candidate documents to begin automatic extraction.");
             }
         });
     }
@@ -528,16 +1743,18 @@
     async function resumeCase(id) {
         run(async () => {
             const targetId = id || document.getElementById('resume-id').value.trim();
-            if (!targetId) return alert('Enter a valid Case ID');
+            if (!targetId) return showToast('Please enter a valid Case ID', 'warning');
             
+            showToast(`Loading case ${targetId.substring(0,8)}...`, 'info');
             const caseData = await api(`/api/cases/${targetId}`);
             currentCaseId = caseData.id;
             showWorkspace();
             await refreshProfile();
+            showToast(`Case loaded into workspace.`, 'success');
         });
     }
 
-    // --- Profile Management ---
+    // --- Profile & Fields Management ---
     async function refreshProfile() {
         if (!currentCaseId) return;
         
@@ -549,7 +1766,7 @@
 
         const data = caseData.data || {};
 
-        // Render Onboarding Complete Celebration Card if employee_id exists
+        // Render Onboarding Complete Celebration Card
         if (caseData.employee_id) {
             document.getElementById('onboarding-success-card').classList.remove('hidden');
             document.getElementById('success-emp-id').innerText = caseData.employee_id;
@@ -570,14 +1787,14 @@
         PROFILE_FIELDS.forEach(f => {
             const val = data[f.key] || '';
             const row = document.createElement('div');
-            row.className = 'field-row';
+            row.className = 'field-item';
             
             const displayVal = val ? val : '—';
             
             row.innerHTML = `
-                <div class="field-label">${f.label}:</div>
-                <div class="field-value" id="val-${f.key}">${displayVal}</div>
-                <button class="field-action" onclick="editField('${f.key}', '${val}')">Edit</button>
+                <span class="field-label-text">${f.label}:</span>
+                <span class="field-val-text" id="val-${f.key}">${displayVal}</span>
+                <button class="field-edit-btn" onclick="editField('${f.key}', '${val.replace(/'/g, "\\'")}')">Edit</button>
             `;
             fieldsContainer.appendChild(row);
         });
@@ -593,7 +1810,7 @@
         }
 
         // Action Buttons Visibility
-        document.getElementById('btn-validate').style.display = (caseData.status !== 'validated' && caseData.status !== 'created') ? 'inline-block' : 'none';
+        document.getElementById('btn-validate').style.display = (caseData.status !== 'validated' && caseData.status !== 'created') ? 'inline-flex' : 'none';
         
         const chkHr = document.getElementById('lbl-hr-checkbox');
         const btnCreate = document.getElementById('btn-create-employee');
@@ -611,20 +1828,18 @@
             document.getElementById('btn-withdraw-consent').style.display = 'none';
         } else {
             btnDownload.classList.add('hidden');
-            document.getElementById('btn-withdraw-consent').style.display = 'inline-block';
+            document.getElementById('btn-withdraw-consent').style.display = 'inline-flex';
         }
 
-        // Render Documents & Status
         await refreshDocuments();
     }
 
     function editField(key, currentValue) {
         const valContainer = document.getElementById(`val-${key}`);
         valContainer.innerHTML = `
-            <input type="text" id="input-${key}" value="${currentValue}" onkeypress="if(event.key==='Enter') saveField('${key}')">
+            <input type="text" class="form-input" style="padding: 4px 8px; font-size: 0.85rem;" id="input-${key}" value="${currentValue}" onkeypress="if(event.key==='Enter') saveField('${key}')">
         `;
         document.getElementById(`input-${key}`).focus();
-        // Change edit button to save
         valContainer.nextElementSibling.innerText = 'Save';
         valContainer.nextElementSibling.onclick = () => saveField(key);
     }
@@ -642,7 +1857,7 @@
                 method: 'PATCH',
                 body: patchObj
             });
-            
+            showToast(`Updated ${key}`, 'success');
             await refreshProfile();
         });
     }
@@ -654,6 +1869,7 @@
         
         const docList = document.getElementById('document-list');
         docList.innerHTML = '';
+        document.getElementById('doc-count-badge').innerText = `${docs.length} file${docs.length === 1 ? '' : 's'}`;
         
         let anyExtracting = false;
         let hasPhoto = false;
@@ -677,12 +1893,12 @@
             }
 
             const item = document.createElement('div');
-            item.className = 'doc-item';
+            item.className = 'doc-card';
             
             const extractionStatus = (d.extraction && d.extraction.status) || d.extraction_status || 'pending';
-            let statusText = extractionStatus === 'complete' ? '✅ Done' : 
-                             (extractionStatus === 'pending' || extractionStatus === 'in_progress' || extractionStatus === 'queued') ? '⏳ Extracting...' : 
-                             extractionStatus === 'failed' ? '❌ Failed' : '📄 Uploaded';
+            let statusBadge = extractionStatus === 'complete' ? '<span class="badge validated">✅ Ready</span>' : 
+                             (extractionStatus === 'pending' || extractionStatus === 'in_progress' || extractionStatus === 'queued') ? '<span class="badge extracting">⏳ Processing</span>' : 
+                             extractionStatus === 'failed' ? '<span class="badge failed">❌ Error</span>' : '<span class="badge received">Uploaded</span>';
                              
             if (extractionStatus === 'pending' || extractionStatus === 'in_progress' || extractionStatus === 'queued') {
                 anyExtracting = true;
@@ -692,10 +1908,10 @@
 
             item.innerHTML = `
                 <div>
-                    <strong>${label}</strong><br>
-                    <span style="font-size:0.8em; color:#666">${d.filename || ('Document v' + d.version)}</span>
+                    <div class="doc-title">${label}</div>
+                    <div class="doc-meta">${d.filename || ('Document v' + d.version)}</div>
                 </div>
-                <div class="doc-status">${statusText}</div>
+                <div>${statusBadge}</div>
             `;
             docList.appendChild(item);
         });
@@ -705,7 +1921,6 @@
             document.getElementById('profile-photo-placeholder').classList.remove('hidden');
         }
 
-        // Manage polling logic based on status
         if (anyExtracting && !isExtracting) {
             isExtracting = true;
             startPolling();
@@ -714,11 +1929,12 @@
             stopPolling();
             const failedDocs = docs.filter(d => (d.extraction && d.extraction.status === 'failed'));
             if (failedDocs.length > 0) {
-                addSystemMessage("❌ Extraction failed for: " + failedDocs.map(d => d.filename).join(', '));
+                addSystemMessage("❌ Extraction encountered issues for: " + failedDocs.map(d => d.filename).join(', '));
             } else {
-                addSystemMessage("✅ Extraction complete — profile updated");
+                addSystemMessage("✨ OCR Extraction complete — Profile auto-populated");
+                showToast("Document processing complete! Profile updated.", 'success');
             }
-            await refreshProfile(); // Refresh profile to get new OCR data
+            await refreshProfile();
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
                     method: 'POST',
@@ -727,7 +1943,7 @@
                 appendChatMessage('user', "What did you extract and what is still missing?");
                 appendChatMessage('agent', resp.response || resp.message || "Extraction complete.");
             } catch(e) {
-                console.warn("Could not query agent on extraction complete", e);
+                console.warn("Agent chat poll error:", e);
             }
         }
     }
@@ -744,14 +1960,17 @@
         }
     }
 
-    // --- Actions ---
+    // --- Actions & Validation ---
     async function validateCase() {
         run(async () => {
+            showToast("Validating candidate documents...", 'info');
             const res = await api(`/api/cases/${currentCaseId}/validate`, { method: 'POST' });
             await refreshProfile();
             const empId = res.employee_id || (res.data && res.data.employee_id) || '';
             const startDate = res.start_date || (res.data && res.data.start_date) || '';
             const emailRecipient = (res.email_status && res.email_status.recipient) || (res.data && res.data.email) || '';
+            
+            showToast(`Validated! Assigned ${empId}`, 'success');
             addSystemMessage(`🎉 Onboarding validated! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · ✉️ Welcome email dispatched to: ' + emailRecipient : ''}`);
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
@@ -761,7 +1980,7 @@
                 appendChatMessage('user', "My case has been validated. What is my Employee ID, start date, and email status?");
                 appendChatMessage('agent', resp.response || resp.message || res.onboarding_message || "Congratulations! Onboarding is complete.");
             } catch(e) {
-                console.warn("Could not query agent on validation", e);
+                console.warn("Validation agent note error:", e);
             }
         });
     }
@@ -770,7 +1989,7 @@
         if (!window._currentCaseData) return;
         const c = window._currentCaseData;
         const d = c.data || {};
-        document.getElementById('modal-emp-name').innerText = d.full_name || 'Employee';
+        document.getElementById('modal-emp-name').innerText = d.full_name || 'Candidate';
         document.getElementById('modal-emp-id-badge').innerText = c.employee_id || 'Pending ID';
         document.getElementById('modal-start-date').innerText = d.start_date || c.start_date || 'Assigned';
         document.getElementById('modal-dept').innerText = c.department || 'General';
@@ -782,7 +2001,7 @@
         document.getElementById('modal-address').innerText = d.address || '—';
         const sentEmail = d.welcome_email_sent_to || d.email;
         document.getElementById('modal-email-status').innerText = sentEmail ? `✉️ Dispatched to ${sentEmail}` : 'Pending';
-        document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active / Onboarded' : c.status;
+        document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active Employee' : c.status;
         
         const photoImg = document.getElementById('profile-photo-img');
         const modalPhoto = document.getElementById('modal-photo-img');
@@ -854,8 +2073,8 @@ Human Resources & Employee Onboarding Team`;
             if (btn) btn.disabled = true;
             try {
                 const res = await api(`/api/cases/${currentCaseId}/email/welcome`, { method: 'POST' });
-                addSystemMessage(`✉️ Welcome email dispatched to ${res.recipient || 'candidate'}!`);
-                alert(`Official welcome email successfully sent to ${res.recipient || 'the employee'}!`);
+                addSystemMessage(`✉️ Official welcome email dispatched to ${res.recipient || 'candidate'}!`);
+                showToast(`Welcome email successfully sent to ${res.recipient || 'the employee'}!`, 'success');
                 await refreshProfile();
             } finally {
                 if (btn) btn.disabled = false;
@@ -865,7 +2084,7 @@ Human Resources & Employee Onboarding Team`;
 
     async function finalizeCase() {
         const hrChecked = document.getElementById('chk-hr-review').checked;
-        if (!hrChecked) return alert("HR must review before creating employee");
+        if (!hrChecked) return showToast("HR must check the review confirmation box.", 'warning');
         
         run(async () => {
             const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : ('idemp-' + Date.now());
@@ -875,25 +2094,28 @@ Human Resources & Employee Onboarding Team`;
                 body: { confirmed: true }
             });
             await refreshProfile();
-            addSystemMessage("🎉 Employee created successfully!");
+            showToast("🎉 Employee created successfully!", 'success');
+            addSystemMessage("🎉 Employee record created successfully!");
             loadHrQueue();
         });
     }
 
     async function withdrawConsent() {
-        if (!confirm("Are you sure you want to withdraw consent? This will fail the case.")) return;
+        if (!confirm("Are you sure you want to withdraw consent? This will halt and fail this onboarding case.")) return;
         run(async () => {
             await api(`/api/cases/${currentCaseId}/consent/withdraw`, {
                 method: 'POST',
                 body: { confirmed: true }
             });
             await refreshProfile();
+            showToast("Consent withdrawn. Case marked failed.", 'info');
             addSystemMessage("Consent withdrawn. Case halted.");
         });
     }
 
     async function exportProfile() {
         run(async () => {
+            showToast("Generating Excel profile...", 'info');
             const blob = await api(`/api/cases/${currentCaseId}/profile/export`, { responseType: 'blob' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -903,6 +2125,7 @@ Human Resources & Employee Onboarding Team`;
             a.click();
             a.remove();
             window.URL.revokeObjectURL(url);
+            showToast("Profile Excel exported.", 'success');
         });
     }
 
@@ -918,6 +2141,7 @@ Human Resources & Employee Onboarding Team`;
             a.click();
             a.remove();
             setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            showToast("Confirmation JSON downloaded.", 'success');
         });
     }
 
@@ -952,7 +2176,7 @@ Human Resources & Employee Onboarding Team`;
     });
 
     async function uploadFiles(files) {
-        if (!currentCaseId) return alert("No active case!");
+        if (!currentCaseId) return showToast("No active case open in workspace!", 'warning');
         
         run(async () => {
             for (let i = 0; i < files.length; i++) {
@@ -967,9 +2191,9 @@ Human Resources & Employee Onboarding Team`;
                     body: formData
                 });
                 
-                addSystemMessage(`📄 Uploaded: ${file.name} — extracting...`);
+                addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
             }
-            // Trigger refresh to show extracting status and start polling
+            showToast(`${files.length} document(s) uploaded. OCR running...`, 'info');
             await refreshDocuments();
         });
     }
@@ -977,7 +2201,7 @@ Human Resources & Employee Onboarding Team`;
     function addSystemMessage(text) {
         const history = document.getElementById('chat-history');
         const div = document.createElement('div');
-        div.className = 'msg system';
+        div.className = 'msg-bubble system';
         div.innerText = text;
         history.appendChild(div);
         history.scrollTop = history.scrollHeight;
@@ -986,7 +2210,7 @@ Human Resources & Employee Onboarding Team`;
     function appendChatMessage(role, text) {
         const history = document.getElementById('chat-history');
         const div = document.createElement('div');
-        div.className = `msg ${role === 'user' ? 'user' : 'agent'}`;
+        div.className = `msg-bubble ${role === 'user' ? 'user' : 'agent'}`;
         
         if (role === 'agent') {
             div.innerText = '🤖 ' + text;
@@ -1019,42 +2243,87 @@ Human Resources & Employee Onboarding Team`;
         if (e.key === 'Enter') sendChatMessage();
     }
 
-    // --- HR Queue ---
+    // --- HR Queue & Data Grid ---
     async function loadHrQueue() {
         run(async () => {
             const cases = await api('/api/hr/cases');
-            const tbody = document.getElementById('hr-table-body');
-            tbody.innerHTML = '';
-            
-            cases.forEach(c => {
-                const id = c.case_id || c.id || '';
-                const shortId = id.length > 8 ? id.substring(0, 8) + '...' : (id || '—');
-                const name = c.full_name || (c.employee_profile && c.employee_profile.full_name) || '—';
-                const created = c.created_at ? new Date(c.created_at).toLocaleString() : '—';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${shortId}</td>
-                    <td><span class="badge ${c.status}">${c.status}</span></td>
-                    <td>${name}</td>
-                    <td>${c.department || '—'}</td>
-                    <td>${created}</td>
-                    <td>
-                        <div style="display: flex; gap: 6px;">
-                            <button class="btn-secondary" onclick="resumeCase('${id}')">Review</button>
-                            <button onclick="deleteCase('${id}')" style="padding: 4px 8px; font-size: 0.8em; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer; font-weight: 600;">🗑️ Delete</button>
-                        </div>
+            allQueueCases = cases || [];
+            updateMetrics(allQueueCases);
+            renderQueueTable(allQueueCases);
+        });
+    }
+
+    function updateMetrics(cases) {
+        document.getElementById('metric-total').innerText = cases.length;
+        document.getElementById('metric-active').innerText = cases.filter(c => c.status === 'received' || c.status === 'needs-information' || c.status === 'extracting').length;
+        document.getElementById('metric-created').innerText = cases.filter(c => c.status === 'created' || c.status === 'validated').length;
+        document.getElementById('metric-failed').innerText = cases.filter(c => c.status === 'failed').length;
+    }
+
+    function filterQueueTable() {
+        const query = (document.getElementById('queue-search').value || '').toLowerCase().trim();
+        if (!query) {
+            renderQueueTable(allQueueCases);
+            return;
+        }
+        const filtered = allQueueCases.filter(c => {
+            const id = (c.case_id || c.id || '').toLowerCase();
+            const name = (c.full_name || (c.employee_profile && c.employee_profile.full_name) || '').toLowerCase();
+            const dept = (c.department || '').toLowerCase();
+            const status = (c.status || '').toLowerCase();
+            return id.includes(query) || name.includes(query) || dept.includes(query) || status.includes(query);
+        });
+        renderQueueTable(filtered);
+    }
+
+    function renderQueueTable(cases) {
+        const tbody = document.getElementById('hr-table-body');
+        tbody.innerHTML = '';
+        
+        if (cases.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 40px; color: var(--slate-400);">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">📭</div>
+                        <div style="font-weight: 600;">No cases in queue</div>
+                        <div style="font-size: 0.8rem;">Click 'Launch Case' above to start a new onboarding process.</div>
                     </td>
-                `;
-                tbody.appendChild(tr);
-            });
+                </tr>
+            `;
+            return;
+        }
+        
+        cases.forEach(c => {
+            const id = c.case_id || c.id || '';
+            const shortId = id.length > 8 ? id.substring(0, 8) + '...' : (id || '—');
+            const name = c.full_name || (c.employee_profile && c.employee_profile.full_name) || '—';
+            const created = c.created_at ? new Date(c.created_at).toLocaleString() : '—';
+            const dept = (c.department || 'General').toUpperCase();
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="id-badge" title="${id}">${shortId}</span></td>
+                <td><span class="badge ${c.status}">${c.status}</span></td>
+                <td><strong style="color: var(--slate-900);">${name}</strong></td>
+                <td><span style="font-size: 0.8rem; font-weight: 600; color: var(--slate-600);">${dept}</span></td>
+                <td><span style="font-size: 0.8rem; color: var(--slate-500);">${created}</span></td>
+                <td style="text-align: right; padding-right: 24px;">
+                    <div style="display: inline-flex; gap: 8px;">
+                        <button class="btn btn-secondary" style="padding: 5px 12px; font-size: 0.8rem;" onclick="resumeCase('${id}')">Review</button>
+                        <button class="btn btn-danger" style="padding: 5px 10px; font-size: 0.8rem;" onclick="deleteCase('${id}')" title="Delete Case">🗑️</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
         });
     }
 
     async function deleteCase(id) {
         const shortId = id.length > 8 ? id.substring(0, 8) + '...' : id;
-        if (!confirm(`Are you sure you want to delete case ${shortId}? This will permanently remove all associated records.`)) return;
+        if (!confirm(`Are you sure you want to delete case ${shortId}? This will permanently remove all associated documents, extractions, and records.`)) return;
         run(async () => {
             await api(`/api/cases/${id}`, { method: 'DELETE' });
+            showToast(`Case ${shortId} deleted.`, 'info');
             if (currentCaseId === id) {
                 closeWorkspace();
             }
@@ -1068,29 +2337,31 @@ Human Resources & Employee Onboarding Team`;
     }
 
     async function clearFailedCases() {
-        if (!confirm("Are you sure you want to delete all failed cases from the queue?")) return;
+        if (!confirm("Are you sure you want to purge all failed cases from the queue?")) return;
         run(async () => {
             const res = await api('/api/hr/cases/clear-failed', { method: 'POST' });
-            alert(`Successfully cleared ${res.deleted_count || 0} failed cases.`);
+            showToast(`Cleared ${res.deleted_count || 0} failed cases from queue.`, 'success');
             await loadHrQueue();
         });
     }
 
     async function exportQueue(format) {
         run(async () => {
+            showToast(`Exporting HR Queue as ${format.toUpperCase()}...`, 'info');
             const blob = await api(`/api/hr/export?format=${format}`, { responseType: 'blob' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `HR_Queue.${format}`;
+            a.download = `HR_Queue_${new Date().toISOString().split('T')[0]}.${format}`;
             document.body.appendChild(a);
             a.click();
             a.remove();
             setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+            showToast("Queue exported successfully.", 'success');
         });
     }
 
-    // --- Initialization ---
+    // --- App Init ---
     window.onload = async () => {
         const loggedIn = await initializeSignIn();
         if (loggedIn) {
