@@ -147,6 +147,8 @@ def test_concurrent_finalization_creates_one_employee(tmp_path, monkeypatch):
 
 def test_validation_requires_document_evidence(session):
     s = svc(session)
+
+    # 1. Manual entry of both PAN and Aadhaar validates without mandating photo uploads
     case = s.create_case("Engineering", True)
     case.data = {
         "full_name": "Alice Test",
@@ -156,9 +158,41 @@ def test_validation_requires_document_evidence(session):
         "aadhaar": "234567890123",
     }
     result = s.validate_case(case.id)
-    assert result.status == "needs-information"
-    assert "document:pan" in result.missing_fields
-    assert "document:aadhaar" in result.missing_fields
+    assert result.status == "validated"
+    assert result.missing_fields == []
+
+    # 2. Manual entry of ONLY PAN validates successfully
+    case_pan = s.create_case("Engineering", True)
+    case_pan.data = {
+        "full_name": "Bob Test",
+        "email": "bob@example.com",
+        "phone": "+919876543210",
+        "pan": "ABCDE1234F",
+    }
+    result_pan = s.validate_case(case_pan.id)
+    assert result_pan.status == "validated"
+
+    # 3. Manual entry of ONLY Aadhaar validates successfully
+    case_aadhaar = s.create_case("Engineering", True)
+    case_aadhaar.data = {
+        "full_name": "Charlie Test",
+        "email": "charlie@example.com",
+        "phone": "+919876543210",
+        "aadhaar": "234567890123",
+    }
+    result_aadhaar = s.validate_case(case_aadhaar.id)
+    assert result_aadhaar.status == "validated"
+
+    # 4. Neither PAN nor Aadhaar provided fails with pan_or_aadhaar
+    case_missing = s.create_case("Engineering", True)
+    case_missing.data = {
+        "full_name": "Dave Test",
+        "email": "dave@example.com",
+        "phone": "+919876543210",
+    }
+    result_missing = s.validate_case(case_missing.id)
+    assert result_missing.status == "needs-information"
+    assert "pan_or_aadhaar" in result_missing.missing_fields
 
 
 def test_auth_valid_rsa_and_wrong_tenant(monkeypatch):

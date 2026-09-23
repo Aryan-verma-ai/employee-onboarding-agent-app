@@ -198,7 +198,7 @@ def test_validation_outcomes_are_persisted_and_explained(api):
     assert response.status_code == 200
     outcomes = {item["rule"]: item for item in response.json()["validation_outcomes"]}
     assert outcomes["consent"]["passed"] is True
-    assert outcomes["pan"]["passed"] is False
+    assert outcomes["pan_or_aadhaar"]["passed"] is False
     assert outcomes["document:pan"]["explanation"]
     assert (
         client.get(f"/api/cases/{case_id}").json()["validation_outcomes"]

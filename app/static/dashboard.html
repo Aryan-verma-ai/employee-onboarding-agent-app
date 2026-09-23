@@ -1383,9 +1383,10 @@
                 <!-- Missing Fields Banner -->
                 <div id="missing-section" class="hidden" style="background: var(--amber-50); border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 12px; font-size: 0.82rem; color: #92400e;">
                     <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                        Outstanding Documents Required
+                        ⚠️ Pending Information / Documents
                     </div>
                     <div id="missing-list" style="font-weight: 600; color: #b45309;"></div>
+                    <div style="margin-top: 6px; font-size: 0.75rem; color: #78350f;">💡 <em>Tip: You can type ID numbers directly using the "Edit" buttons below or upload documents. Only one of PAN or Aadhaar is mandatory!</em></div>
                 </div>
 
                 <!-- Auto-Extracted Details -->
@@ -2141,7 +2142,17 @@
         const missingSec = document.getElementById('missing-section');
         if (missing.length > 0) {
             missingSec.classList.remove('hidden');
-            document.getElementById('missing-list').innerText = missing.join(', ');
+            const friendlyMap = {
+                'pan_or_aadhaar': 'Identity ID (PAN or Aadhaar)',
+                'pan': 'Valid PAN Number',
+                'aadhaar': 'Valid Aadhaar Number',
+                'full_name': 'Full Name',
+                'email': 'Email Address',
+                'phone': 'Phone Number',
+                'department': 'Department'
+            };
+            const friendly = missing.map(m => friendlyMap[m] || m.replace(/^document:/, 'Document: ').replace(/^conflict:/, 'Conflict: '));
+            document.getElementById('missing-list').innerText = friendly.join(' • ');
         } else {
             missingSec.classList.add('hidden');
         }

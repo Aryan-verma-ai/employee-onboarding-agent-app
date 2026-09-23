@@ -79,23 +79,20 @@ class OnboardingService:
 
     def validation_errors(self, case):
         from .config import settings
-        from .validation import REQUIRED_DOCUMENTS, validate_record
+        from .validation import validate_record
 
         errors = validate_record(case.data, case.department)
         evidence = {}
-        for doc_type in REQUIRED_DOCUMENTS:
-            doc = self.db.scalar(
-                select(Document)
-                .where(
-                    Document.case_id == case.id,
-                    Document.tenant_id == case.tenant_id,
-                    Document.doc_type == doc_type,
-                )
-                .order_by(Document.version.desc(), Document.created_at.desc())
+        # Verify all documents that were actually uploaded for this case
+        docs = self.db.scalars(
+            select(Document)
+            .where(
+                Document.case_id == case.id,
+                Document.tenant_id == case.tenant_id,
             )
-            if not doc:
-                errors.append("document:" + doc_type)
-                continue
+            .order_by(Document.version.desc(), Document.created_at.desc())
+        ).all()
+        for doc in docs:
             clean = doc.scan_status == "clean" or (
                 settings.environment == "development" and doc.scan_status == "local-unscanned-dev"
             )
@@ -104,11 +101,11 @@ class OnboardingService:
                 if field in {"pan", "aadhaar", "email"} and candidate.get("confidence", 0) >= 0.9:
                     evidence.setdefault(field, set()).add(candidate.get("value"))
             if not clean:
-                errors.append("scan:" + doc_type)
+                errors.append("scan:" + doc.doc_type)
             if doc.extraction.get("status") != "complete":
-                errors.append("extraction:" + doc_type)
+                errors.append("extraction:" + doc.doc_type)
             if doc.extraction.get("reviewed") is not True:
-                errors.append("review:" + doc_type)
+                errors.append("review:" + doc.doc_type)
         for field, values in evidence.items():
             if len(values) > 1 or (case.data.get(field) and values != {case.data[field]}):
                 errors.append("conflict:" + field)
@@ -167,10 +164,12 @@ class OnboardingService:
         ).all()
 
         # Which fields are populated in case.data?
-        from .validation import ALLOWED_FIELDS, REQUIRED_FIELDS
+        from .validation import ALLOWED_FIELDS
 
         populated_fields = [f for f in ALLOWED_FIELDS if case.data.get(f)]
-        missing_fields = [f for f in REQUIRED_FIELDS if not case.data.get(f)]
+        missing_fields = [f for f in ("full_name", "email", "phone") if not case.data.get(f)]
+        if not case.data.get("pan") and not case.data.get("aadhaar"):
+            missing_fields.append("pan_or_aadhaar")
 
         extracted_profile = {
             "full_name": case.data.get("full_name") or None,
