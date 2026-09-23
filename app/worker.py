@@ -88,10 +88,19 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                 )
 
             # ── Auto-merge high-confidence accepted values into case.data ──
+            from .extraction import is_valid_candidate_email, is_valid_indian_phone
+
             accepted = result.get("accepted", {})
             if accepted:
                 merged = {**case.data}
+                aadhaar_num = merged.get("aadhaar") or accepted.get("aadhaar", "")
                 for field, value in accepted.items():
+                    # Reject invalid emails (e.g. uidai helpline or non-allowed domain)
+                    if field == "email" and not is_valid_candidate_email(value):
+                        continue
+                    # Reject numbers that match aadhaar or helpline
+                    if field == "phone" and not is_valid_indian_phone(value, aadhaar_val=aadhaar_num):
+                        continue
                     # Only fill empty fields — never overwrite user corrections
                     if not merged.get(field):
                         merged[field] = value
@@ -100,7 +109,7 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                     service.audit(
                         case_id,
                         "data.auto_merged",
-                        {"fields": sorted(set(accepted) - set(case.data))},
+                        {"fields": sorted(set(merged) - set(case.data))},
                     )
 
             if case.status == "failed":

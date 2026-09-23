@@ -136,3 +136,95 @@ def test_worker_pan_image_processes_and_merges(tmp_path):
         assert updated_case.data.get("pan") == "ABCDE1234F"
         assert updated_case.data.get("full_name") == "Amit Kumar"
         assert updated_case.data.get("dob") == "1995-05-15"
+
+
+def test_is_valid_candidate_email():
+    from app.extraction import is_valid_candidate_email
+
+    # Allowed candidate personal emails
+    assert is_valid_candidate_email("candidate@gmail.com") is True
+    assert is_valid_candidate_email("user.name@outlook.com") is True
+    assert is_valid_candidate_email("john_doe@yahoo.com") is True
+    assert is_valid_candidate_email("neelabh@yahoo.in") is True
+    assert is_valid_candidate_email("test@hotmail.com") is True
+    assert is_valid_candidate_email("test@icloud.com") is True
+
+    # Disallowed helpline / support / government emails
+    assert is_valid_candidate_email("help@uidai.gov.in") is False
+    assert is_valid_candidate_email("support@uidai.gov.in") is False
+    assert is_valid_candidate_email("helpdesk@incometax.gov.in") is False
+    assert is_valid_candidate_email("info@randomcompany.org") is False
+    assert is_valid_candidate_email("noreply@service.com") is False
+    assert is_valid_candidate_email("") is False
+    assert is_valid_candidate_email(None) is False
+
+
+def test_is_valid_indian_phone():
+    from app.extraction import is_valid_indian_phone
+
+    # Valid 10-digit Indian mobiles
+    assert is_valid_indian_phone("9876543210") is True
+    assert is_valid_indian_phone("+91 9876543210") is True
+    assert is_valid_indian_phone("+91-8123456789") is True
+    assert is_valid_indian_phone("7123456789") is True
+    assert is_valid_indian_phone("6123456789") is True
+
+    # Invalid phones: 12-digit Aadhaar number
+    assert is_valid_indian_phone("429689817829") is False
+    assert is_valid_indian_phone("4296 8981 7829", aadhaar_val="429689817829") is False
+    assert is_valid_indian_phone("9876543210", aadhaar_val="987654321099") is False  # Substring of Aadhaar
+    # Helpline
+    assert is_valid_indian_phone("1947") is False
+    # Starting with 1-5
+    assert is_valid_indian_phone("1234567890") is False
+    assert is_valid_indian_phone("5123456789") is False
+
+
+def test_clean_full_name():
+    from app.extraction import clean_full_name
+
+    # Bilingual Gurmukhi + English name on Aadhaar
+    assert clean_full_name("ਠੀਲਾਵ Neelabh नरम भिडी") == "Neelabh"
+    assert clean_full_name("Neelabh DOB: 01/06/2006 MALE") == "Neelabh"
+    assert clean_full_name("C/O: Nitin Karnwal") == "Nitin Karnwal"
+    assert clean_full_name("Amit Kumar S/O Ramesh Kumar") == "Amit Kumar Ramesh Kumar"
+    assert clean_full_name("Rahul Sharma") == "Rahul Sharma"
+
+
+def test_aadhaar_ocr_extraction_filters_uidai_email_and_aadhaar_phone():
+    from app.extraction import candidates_from_result
+    from types import SimpleNamespace as Obj
+
+    # Simulate OCR lines from real Aadhaar card back
+    back_lines = [
+        "Address: C/O: Nitin Karnwal, 237 B, Ansal Enclave, Ludhiana, Punjab - 141010",
+        "4296 8981 7829",
+        "1947",
+        "help@uidai.gov.in",
+        "Download Date: 11/03/2022",
+    ]
+    words = []
+    ocr_lines = []
+    offset = 0
+    for text in back_lines:
+        span = Obj(offset=offset, length=len(text))
+        words.append(Obj(span=span, confidence=0.98))
+        ocr_lines.append(Obj(content=text, spans=[span]))
+        offset += len(text) + 1
+
+    result = candidates_from_result(
+        Obj(pages=[Obj(page_number=1, words=words, lines=ocr_lines)]), "test-aadhaar-back"
+    )
+
+    accepted = result.get("accepted", {})
+    # Aadhaar should be extracted
+    assert accepted.get("aadhaar") == "429689817829"
+    # help@uidai.gov.in MUST NOT be accepted as candidate email!
+    assert "email" not in accepted
+    assert not any(c["field"] == "email" for c in result["candidates"])
+    # 4296 8981 7829 or 1947 MUST NOT be accepted as phone number!
+    assert "phone" not in accepted
+    assert not any(c["field"] == "phone" for c in result["candidates"])
+    # Download date MUST NOT be accepted as DOB!
+    assert "dob" not in accepted
+
