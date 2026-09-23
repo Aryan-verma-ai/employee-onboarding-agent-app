@@ -2,17 +2,21 @@
 
 import csv
 import io
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .auth import Principal, get_principal
 from .db import get_db
+from .jobs import ExtractionJob
 from .models import AuditEvent, Case, Document, Employee, Idempotency
 from .service import OnboardingService
+
+logger = logging.getLogger("onboarding.dashboard")
 
 router = APIRouter(tags=["hr"])
 EXPORT_FIELDS = ("case_id", "employee_id", "department", "status", "full_name", "email")
@@ -182,6 +186,32 @@ def export_cases(
     )
 
 
+def cascade_delete_case(db: Session, case_id: str):
+    # 1. Extraction jobs first (they foreign-key both Document and Case)
+    for job in db.scalars(select(ExtractionJob).where(ExtractionJob.case_id == case_id)).all():
+        db.delete(job)
+    doc_ids = db.scalars(select(Document.id).where(Document.case_id == case_id)).all()
+    if doc_ids:
+        for job in db.scalars(select(ExtractionJob).where(ExtractionJob.document_id.in_(doc_ids))).all():
+            db.delete(job)
+    # 2. Documents
+    for doc in db.scalars(select(Document).where(Document.case_id == case_id)).all():
+        db.delete(doc)
+    # 3. Employees
+    for emp in db.scalars(select(Employee).where(Employee.case_id == case_id)).all():
+        db.delete(emp)
+    # 4. Idempotency keys
+    for idem in db.scalars(select(Idempotency).where(Idempotency.case_id == case_id)).all():
+        db.delete(idem)
+    # 5. Audit events
+    for event in db.scalars(select(AuditEvent).where(AuditEvent.case_id == case_id)).all():
+        db.delete(event)
+    # 6. Case
+    case = db.scalar(select(Case).where(Case.id == case_id))
+    if case:
+        db.delete(case)
+
+
 @router.delete("/api/cases/{case_id}")
 @router.delete("/api/hr/cases/{case_id}")
 def delete_case(
@@ -193,19 +223,14 @@ def delete_case(
     if not case:
         raise HTTPException(404, "Case not found")
 
-    # Delete foreign key references
-    for doc in db.scalars(select(Document).where(Document.case_id == case.id)).all():
-        db.delete(doc)
-    for emp in db.scalars(select(Employee).where(Employee.case_id == case.id)).all():
-        db.delete(emp)
-    for idem in db.scalars(select(Idempotency).where(Idempotency.case_id == case.id)).all():
-        db.delete(idem)
-    for event in db.scalars(select(AuditEvent).where(AuditEvent.case_id == case.id)).all():
-        db.delete(event)
-
-    db.delete(case)
-    db.commit()
-    return {"status": "deleted", "case_id": case_id}
+    try:
+        cascade_delete_case(db, case.id)
+        db.commit()
+        return {"status": "deleted", "case_id": case_id}
+    except Exception as err:
+        db.rollback()
+        logger.exception("Failed to delete case %s: %s", case_id, err)
+        raise HTTPException(500, f"Failed to delete case: {err}")
 
 
 @router.post("/api/hr/cases/clear-failed")
@@ -213,19 +238,24 @@ def clear_failed_cases(
     db: Session = Depends(get_db),
     principal: Principal = Depends(hr_principal),
 ):
-    failed_cases = db.scalars(select(Case).where(Case.status == "failed")).all()
-    count = 0
-    for case in failed_cases:
-        for doc in db.scalars(select(Document).where(Document.case_id == case.id)).all():
-            db.delete(doc)
-        for emp in db.scalars(select(Employee).where(Employee.case_id == case.id)).all():
-            db.delete(emp)
-        for idem in db.scalars(select(Idempotency).where(Idempotency.case_id == case.id)).all():
-            db.delete(idem)
-        for event in db.scalars(select(AuditEvent).where(AuditEvent.case_id == case.id)).all():
-            db.delete(event)
-        db.delete(case)
-        count += 1
-    db.commit()
-    return {"status": "cleared", "deleted_count": count}
+    try:
+        failed_cases = db.scalars(
+            select(Case).where(
+                or_(
+                    func.lower(Case.status) == "failed",
+                    Case.status == "failed",
+                )
+            )
+        ).all()
+        count = 0
+        for case in failed_cases:
+            cascade_delete_case(db, case.id)
+            count += 1
+        db.commit()
+        return {"status": "cleared", "deleted_count": count}
+    except Exception as err:
+        db.rollback()
+        logger.exception("Failed to clear failed cases: %s", err)
+        raise HTTPException(500, f"Failed to clear failed cases: {err}")
+
 
