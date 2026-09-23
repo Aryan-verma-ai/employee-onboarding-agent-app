@@ -109,9 +109,125 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             service.audit(
                 case_id, "document.extracted", {"document_id": document_id, "attempt": job.attempts}
             )
+
+            # ── Auto-extract portrait photo from PAN / Aadhaar / Resume ──
+            if document.doc_type in ("pan", "aadhaar", "resume"):
+                _try_auto_extract_photo(db, principal, service, case, document)
         job.lease_until, job.lease_token = None, None
         db.commit()
         return True
+
+
+def _try_auto_extract_photo(db, principal, service, case, document):
+    """After successful OCR, try to extract a portrait photo from the document.
+
+    Only runs if:
+      1. The document is PAN, Aadhaar, or Resume
+      2. No dedicated photograph document already exists for this case
+    """
+    import hashlib
+    from uuid import uuid4
+
+    from sqlalchemy import select
+
+    from .models import Document as DocModel
+    from .photo_extract import extract_photo_from_document
+
+    case_id = case.id
+
+    # Skip if a photograph already exists for this case
+    existing_photo = db.scalar(
+        select(DocModel).where(
+            DocModel.case_id == case_id,
+            DocModel.doc_type == "photograph",
+            DocModel.tenant_id == principal.tenant_id,
+        )
+    )
+    if existing_photo:
+        logging.getLogger(__name__).debug(
+            "Photo already exists for case %s — skipping auto-extract", case_id
+        )
+        return
+
+    # Read document content
+    try:
+        from .documents import read_clean_content
+        content = read_clean_content(document)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Cannot read document %s for photo extraction: %s", document.id, exc
+        )
+        return
+
+    # Extract photo
+    result = extract_photo_from_document(content, document.doc_type, document.content_type)
+    if not result:
+        logging.getLogger(__name__).info(
+            "No portrait photo found in %s document %s", document.doc_type, document.id
+        )
+        return
+
+    photo_bytes, photo_content_type = result
+    digest = hashlib.sha256(photo_bytes).hexdigest()
+
+    # Don't store duplicate by sha256
+    dup = db.scalar(
+        select(DocModel).where(DocModel.case_id == case_id, DocModel.sha256 == digest)
+    )
+    if dup:
+        return
+
+    # Store the extracted photo
+    photo_id = str(uuid4())
+    key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{photo_id}"
+
+    from .documents import store_content
+    scan_status = store_content(key, photo_bytes, photo_content_type)
+
+    photo_doc = DocModel(
+        id=photo_id,
+        case_id=case_id,
+        tenant_id=principal.tenant_id,
+        filename=f"auto_extracted_photo_{document.doc_type}.jpg",
+        content_type=photo_content_type,
+        storage_key=key,
+        sha256=digest,
+        doc_type="photograph",
+        version=1,
+        scan_status=scan_status,
+        extraction={
+            "status": "complete",
+            "reviewed": True,
+            "candidates": [],
+            "accepted": {},
+            "doc_type": "photograph",
+            "notes": f"Auto-extracted from {document.doc_type} ({document.filename})",
+            "source_document_id": document.id,
+            "source_doc_type": document.doc_type,
+        },
+        size=len(photo_bytes),
+    )
+    db.add(photo_doc)
+
+    # Update case data
+    case_data = dict(case.data or {})
+    case_data["has_photograph"] = True
+    case_data["photograph_document_id"] = photo_id
+    case_data["photo_auto_extracted_from"] = document.doc_type
+    case.data = case_data
+
+    service.audit(
+        case_id,
+        "document.photo_auto_extracted",
+        {
+            "photo_document_id": photo_id,
+            "source_document_id": document.id,
+            "source_doc_type": document.doc_type,
+        },
+    )
+    logging.getLogger(__name__).info(
+        "Auto-extracted portrait photo from %s → document %s", document.doc_type, photo_id
+    )
 
 
 def main():
@@ -131,3 +247,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
