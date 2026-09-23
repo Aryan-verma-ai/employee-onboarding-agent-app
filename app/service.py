@@ -238,8 +238,7 @@ class OnboardingService:
         full_name = case.data.get("full_name") or "Employee"
         start_date = case.data.get("start_date")
         onboarding_msg = (
-            f"🎉 Welcome aboard, {full_name}! Your onboarding is complete and employee profile is active. "
-            f"Your official Employee ID is {case.employee_id}, and your assigned start date is {start_date}."
+            f"Employee record created for {full_name}. Active with Employee ID {case.employee_id}, effective start date: {start_date}."
             if case.employee_id else None
         )
 

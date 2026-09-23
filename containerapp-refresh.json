@@ -4,7 +4,7 @@
       "containers": [
         {
           "name": "onboarding",
-          "image": "python:3.12-slim",
+          "image": "python:3.12-slim-bookworm",
           "command": ["/bin/sh"],
           "args": ["-c", "apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && git clone --branch feat/azure-foundry-onboarding --single-branch https://github.com/Aryan-verma-ai/employee-onboarding-agent-app.git /srv/app && cd /srv/app && pip install --no-cache-dir . && python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"],
           "resources": {"cpu": 0.5, "memory": "1Gi"},
@@ -29,7 +29,7 @@
             {"name": "AZURE_DOCUMENT_INTELLIGENCE_AUTH_MODE", "value": "api_key"},
             {"name": "WORKER_TENANT_ID", "value": "a8780332-fecd-4f97-81b8-3782131af31a"},
             {"name": "WORKER_SUBJECT", "value": "onboarding-worker"},
-            {"name": "DEMO_DEPLOYMENT", "value": "post-completion-all-fields-update-v9"}
+            {"name": "DEMO_DEPLOYMENT", "value": "enterprise-ux-profile-widen-v10"}
           ]
         }
       ],

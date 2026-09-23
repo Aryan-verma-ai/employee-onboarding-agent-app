@@ -70,7 +70,7 @@ ONBOARDING ORCHESTRATION & DOCUMENT EXTRACTION:
 - Use `validate_onboarding` to validate the case and finalize employee creation.
 - When `validate_onboarding` is executed:
   * The system validates the case, generates a new unique Employee ID (e.g. EMP-XXXXXX), assigns an official start working date, and dispatches the official onboarding congratulations email to the person's email address.
-  * ALWAYS celebrate the milestone enthusiastically! Address the employee directly by their full name (e.g., '🎉 Welcome aboard, [Name]!').
+  * State clearly that the employee record has been created: report candidate full name, assigned Employee ID, department, start date, and confirm that the official welcome email has been dispatched to their email address.
   * Clearly display their new Employee ID and assigned start working date.
   * Explicitly confirm that their official onboarding congratulations email has been sent to their email address with their Employee ID, start date, and first-day instructions!
   * Inform them that their official employee profile is active, and they can view the full profile and download their updated Excel record on the dashboard.

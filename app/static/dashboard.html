@@ -515,18 +515,20 @@
         /* --- Main Workspace (Two Columns) --- */
         #main-workspace {
             display: none;
-            gap: 24px;
-            height: calc(100vh - 120px);
-            min-height: 680px;
+            gap: 20px;
+            height: calc(100vh - 110px);
+            min-height: 720px;
         }
 
         /* Left Column: Candidate Profile */
         .workspace-profile {
-            flex: 0 0 380px;
+            flex: 0 0 460px;
+            min-width: 440px;
+            max-width: 500px;
             background: white;
             border-radius: var(--radius-lg);
             border: 1px solid var(--slate-200);
-            box-shadow: var(--shadow-lg);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
             display: flex;
             flex-direction: column;
             overflow-y: auto;
@@ -534,8 +536,8 @@
         }
 
         .profile-top-banner {
-            padding: 18px 20px;
-            border-bottom: 1px solid var(--slate-100);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--slate-200);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -543,8 +545,8 @@
         }
 
         .profile-title-text {
-            font-size: 0.9rem;
-            font-weight: 800;
+            font-size: 0.88rem;
+            font-weight: 700;
             color: var(--slate-900);
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -554,13 +556,13 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 16px;
             flex: 1;
         }
 
         .avatar-section {
             text-align: center;
-            padding: 10px 0;
+            padding: 4px 0 10px 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -578,90 +580,134 @@
             height: 80px;
             border-radius: 50%;
             object-fit: cover;
-            border: 3px solid var(--primary);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+            border: 2px solid var(--primary);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
         }
 
         .avatar-placeholder {
             width: 80px;
             height: 80px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--slate-100), var(--slate-200));
-            border: 2px dashed var(--slate-300);
+            background: var(--slate-100);
+            border: 1px dashed var(--slate-300);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 32px;
+            font-size: 28px;
             color: var(--slate-400);
         }
 
-        /* Celebration Card */
-        .celebration-card {
-            background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+        /* Enterprise Status Record Card */
+        .status-record-card {
+            background: #ffffff;
             border-radius: var(--radius-md);
-            padding: 18px;
-            color: white;
-            text-align: center;
-            box-shadow: 0 8px 20px rgba(5, 150, 105, 0.25);
+            border: 1px solid #bbf7d0;
+            border-left: 4px solid #10b981;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             display: flex;
             flex-direction: column;
             gap: 12px;
-            position: relative;
-            overflow: hidden;
         }
 
-        .celebration-card::before {
-            content: '';
-            position: absolute;
-            top: -20px;
-            right: -20px;
-            width: 100px;
-            height: 100px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            pointer-events: none;
+        .status-record-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .celebration-badge {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
+        .status-record-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
             font-weight: 700;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
-            align-self: center;
+            color: #065f46;
+            background: #ecfdf5;
+            padding: 3px 8px;
+            border-radius: 20px;
+            border: 1px solid #a7f3d0;
+        }
+
+        .status-record-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+
+        .status-record-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .status-record-sub {
+            font-size: 0.78rem;
+            color: #64748b;
+            margin-top: 1px;
         }
 
         .emp-id-display {
-            background: rgba(0, 0, 0, 0.25);
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             padding: 10px 14px;
             border-radius: var(--radius-sm);
             font-family: var(--font-mono);
-            font-size: 1.4rem;
+            font-size: 1.25rem;
             font-weight: 700;
-            letter-spacing: 1px;
-            color: #a7f3d0;
+            color: #0f172a;
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
+            justify-content: space-between;
         }
 
         .copy-icon-btn {
-            background: none;
-            border: none;
-            color: white;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #475569;
             cursor: pointer;
-            font-size: 0.9rem;
-            opacity: 0.8;
-            transition: opacity 0.15s;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: var(--font-sans);
+            font-weight: 600;
+            transition: all 0.15s;
         }
 
-        .copy-icon-btn:hover { opacity: 1; }
+        .copy-icon-btn:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .status-meta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+        }
+
+        .status-meta-label {
+            color: #64748b;
+            font-weight: 500;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+        }
+
+        .status-meta-val {
+            color: #0f172a;
+            font-weight: 600;
+        }
 
         .dispatch-box {
-            background: white;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             border-radius: var(--radius-sm);
             padding: 12px;
             color: var(--slate-800);
@@ -1269,7 +1315,7 @@
         <!-- Left Column: Employee Profile Panel -->
         <div class="workspace-profile">
             <div class="profile-top-banner">
-                <span class="profile-title-text">👤 Candidate Profile</span>
+                <span class="profile-title-text">Candidate Profile & Dossier</span>
                 <span id="case-status-badge" class="badge received">Received</span>
             </div>
 
@@ -1282,44 +1328,62 @@
                     </div>
                 </div>
 
-                <!-- Celebration Card (When employee_id exists) -->
-                <div id="onboarding-success-card" class="celebration-card hidden">
-                    <div class="celebration-badge">✨ Verification Complete</div>
-                    <h3 style="font-size: 1.15rem; font-weight: 800;">🎉 Onboarding Approved!</h3>
-                    <p id="success-welcome-msg" style="font-size: 0.82rem; opacity: 0.95;"></p>
+                <!-- Status Record Card (When employee_id exists) -->
+                <div id="onboarding-success-card" class="status-record-card hidden">
+                    <div class="status-record-header">
+                        <div class="status-record-pill">
+                            <span class="status-record-dot"></span>
+                            <span>Record Active</span>
+                        </div>
+                        <span style="font-size: 0.74rem; color: #64748b; font-weight: 600;">HR Approved</span>
+                    </div>
+
+                    <div>
+                        <div class="status-record-title">Employee Record Created</div>
+                        <div class="status-record-sub">Verification confirmed · Internal record active</div>
+                    </div>
                     
                     <div class="emp-id-display">
                         <span id="success-emp-id">EMP-XXXXXX</span>
-                        <button onclick="copyToClipboard(document.getElementById('success-emp-id').innerText)" class="copy-icon-btn" title="Copy Employee ID">📋</button>
+                        <button onclick="copyToClipboard(document.getElementById('success-emp-id').innerText)" class="copy-icon-btn" title="Copy Employee ID">Copy ID</button>
                     </div>
 
-                    <div style="font-size: 0.82rem; opacity: 0.9;">
-                        🗓️ Official Start Date: <strong id="success-start-date" style="color: #a7f3d0;">Assigned</strong>
+                    <div class="status-meta-grid">
+                        <div>
+                            <div class="status-meta-label">Effective Start Date</div>
+                            <div id="success-start-date" class="status-meta-val">—</div>
+                        </div>
+                        <div>
+                            <div class="status-meta-label">Record Status</div>
+                            <div class="status-meta-val" style="color: #059669;">Verified & Active</div>
+                        </div>
                     </div>
 
                     <div class="dispatch-box">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 800; color: var(--slate-500); letter-spacing: 0.05em;">Dispatch Congratulations Email</div>
-                        <div id="success-email-text" style="font-size: 0.8rem; color: var(--primary); margin: 3px 0 8px 0; word-break: break-all; font-weight: 600;">✉️ Ready</div>
+                        <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: var(--slate-500); letter-spacing: 0.04em;">Candidate Welcome Email</div>
+                        <div id="success-email-text" style="font-size: 0.8rem; color: var(--slate-800); margin: 3px 0 8px 0; word-break: break-all; font-weight: 600;">Dispatched</div>
                         
                         <div class="dispatch-buttons">
-                            <button id="btn-open-gmail" onclick="openWelcomeEmailClient('gmail')" class="btn" style="background: #ea4335; color: white; padding: 6px 10px; font-size: 0.78rem;">🚀 Gmail Web</button>
-                            <button id="btn-open-mailto" onclick="openWelcomeEmailClient('mailto')" class="btn" style="background: #0078d4; color: white; padding: 6px 10px; font-size: 0.78rem;">✉️ System Mail</button>
+                            <button id="btn-open-gmail" onclick="openWelcomeEmailClient('gmail')" class="btn btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;">Gmail Web</button>
+                            <button id="btn-open-mailto" onclick="openWelcomeEmailClient('mailto')" class="btn btn-secondary" style="padding: 6px 10px; font-size: 0.78rem;">Email Client</button>
                         </div>
-                        <button id="btn-resend-email" onclick="resendWelcomeEmail()" class="btn btn-secondary" style="width: 100%; margin-top: 6px; padding: 5px; font-size: 0.75rem;">⚡ Server Auto-Dispatch (0 Credits)</button>
+                        <button id="btn-resend-email" onclick="resendWelcomeEmail()" class="btn btn-secondary" style="width: 100%; margin-top: 6px; padding: 6px; font-size: 0.75rem;">Resend Notification Email</button>
                     </div>
 
-                    <button onclick="openFullProfileModal()" class="btn" style="background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.4); font-size: 0.82rem; margin-top: 4px;">
-                        📄 View Full Record & Dossier
-                    </button>
-                    <button onclick="showSetup()" class="btn" style="background: white; color: #065f46; font-weight: 700; font-size: 0.82rem; margin-top: 8px;">
-                        ➕ Start Next Candidate Onboarding
-                    </button>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 2px;">
+                        <button onclick="openFullProfileModal()" class="btn btn-primary" style="font-size: 0.82rem; padding: 8px;">
+                            View & Edit Full Dossier
+                        </button>
+                        <button onclick="showSetup()" class="btn btn-secondary" style="font-size: 0.82rem; padding: 8px;">
+                            Start Next Candidate Onboarding
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Missing Fields Banner -->
                 <div id="missing-section" class="hidden" style="background: var(--amber-50); border: 1px solid #fde68a; border-radius: var(--radius-sm); padding: 12px; font-size: 0.82rem; color: #92400e;">
                     <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                        ⚠️ Outstanding Documents Required
+                        Outstanding Documents Required
                     </div>
                     <div id="missing-list" style="font-weight: 600; color: #b45309;"></div>
                 </div>
@@ -1349,29 +1413,29 @@
 
             <!-- Workspace Actions Bottom Bar -->
             <div class="workspace-actions">
-                <button id="btn-validate" onclick="validateCase()" class="btn btn-primary" style="width: 100%; padding: 11px;">
-                    🛡️ Validate Case & Generate ID
+                <button id="btn-validate" onclick="validateCase()" class="btn btn-primary" style="width: 100%; padding: 10px;">
+                    Validate & Finalize Case
                 </button>
                 
                 <button id="btn-export-profile" onclick="exportProfile()" class="btn btn-secondary" style="width: 100%;">
-                    📥 Export Profile (Excel)
+                    Export Profile (Excel)
                 </button>
 
                 <div id="lbl-hr-checkbox" class="consent-row hidden" style="margin: 4px 0;">
                     <input type="checkbox" id="chk-hr-review">
-                    <span style="font-size: 0.82rem; font-weight: 700; color: var(--slate-800);">Attest HR Compliance Review</span>
+                    <span style="font-size: 0.82rem; font-weight: 600; color: var(--slate-800);">Attest HR Compliance Review</span>
                 </div>
 
-                <button id="btn-create-employee" onclick="finalizeCase()" class="btn btn-success hidden" style="width: 100%; padding: 11px;">
-                    ✅ Finalize & Create Employee
+                <button id="btn-create-employee" onclick="finalizeCase()" class="btn btn-success hidden" style="width: 100%; padding: 10px;">
+                    Finalize & Create Employee Record
                 </button>
 
                 <button id="btn-download-confirmation" onclick="downloadConfirmation()" class="btn btn-secondary hidden" style="width: 100%;">
-                    📜 Download Official Confirmation (JSON)
+                    Download Confirmation Record (JSON)
                 </button>
 
-                <button id="btn-edit-dossier" onclick="openFullProfileModal(); toggleModalEditMode();" class="btn btn-secondary hidden" style="width: 100%; border-color: var(--primary); color: var(--primary); font-weight: 700;">
-                    ✏️ Edit & Push Employee Updates
+                <button id="btn-edit-dossier" onclick="openFullProfileModal(); toggleModalEditMode();" class="btn btn-secondary hidden" style="width: 100%; border-color: var(--primary); color: var(--primary); font-weight: 600;">
+                    Edit & Push Record Updates
                 </button>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
@@ -1379,7 +1443,7 @@
                         Withdraw Consent
                     </button>
                     <button id="btn-delete-case" onclick="deleteCurrentCase()" class="btn btn-danger" style="font-size: 0.78rem; padding: 7px; background: #fff1f2;">
-                        🗑️ Delete Case
+                        Delete Case
                     </button>
                 </div>
             </div>
@@ -1389,43 +1453,43 @@
         <div class="workspace-chat">
             <div class="chat-top-bar">
                 <div class="chat-agent-info">
-                    <div class="chat-agent-avatar">🤖</div>
+                    <div class="chat-agent-avatar" style="background: #2563eb; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em;">AI</div>
                     <div>
-                        <div class="chat-agent-name">Foundry Onboarding Agent</div>
+                        <div class="chat-agent-name">Foundry Onboarding Copilot</div>
                         <div class="chat-agent-status">
                             <span class="status-dot"></span>
-                            <span>Azure Document Intelligence OCR Online · GPT-4o</span>
+                            <span>Azure Document Intelligence OCR · Azure OpenAI GPT-4o</span>
                         </div>
                     </div>
                 </div>
                 
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="id-badge" id="case-id-chip">Case: None</span>
-                    <button onclick="copyToClipboard(currentCaseId)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" title="Copy Case ID">📋</button>
-                    <button onclick="showSetup()" class="btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 600;" title="Start a new onboarding case">➕ New Case</button>
+                    <button onclick="copyToClipboard(currentCaseId)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" title="Copy Case ID">Copy ID</button>
+                    <button onclick="showSetup()" class="btn btn-primary" style="padding: 5px 12px; font-size: 0.78rem;" title="Start a new onboarding case">+ New Case</button>
                 </div>
             </div>
 
             <!-- Upload Drop Area -->
             <div class="drop-area" id="drop-zone">
                 <input type="file" id="file-input" multiple style="display: none;">
-                <div class="drop-icon">📎</div>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <div class="drop-text">Drag & drop candidate documents here, or click to browse</div>
-                <div class="drop-subtext">Supports PAN, Aadhaar, Resume, Photograph (PDF, PNG, JPG) · Automated Classification</div>
+                <div class="drop-subtext">PAN Card, Aadhaar Card, Resume, Photograph (PDF, PNG, JPG) · Automatic Classification & OCR Extraction</div>
             </div>
 
             <!-- Chat Messages Log -->
             <div class="chat-body" id="chat-history">
                 <div class="msg-bubble agent">
-                    👋 Welcome! I am your AI Onboarding Assistant. Upload the candidate's PAN Card, Aadhaar Card, Resume, and Photo. I'll automatically extract all fields, resolve data conflicts, and prepare the official employee profile.
+                    Onboarding Copilot ready. Upload candidate credentials (PAN, Aadhaar, Resume, Photograph) to begin automated extraction and profile verification.
                 </div>
             </div>
 
             <!-- Message Input Area -->
             <div class="chat-input-bar">
                 <input type="text" id="chat-input" class="chat-input-field" placeholder="Ask agent e.g. 'What documents are missing?' or 'Verify candidate'..." onkeypress="handleChatKey(event)">
-                <button onclick="sendChatMessage()" class="btn btn-primary" style="border-radius: 30px; padding: 10px 22px;">
-                    Send ➤
+                <button onclick="sendChatMessage()" class="btn btn-primary" style="border-radius: 6px; padding: 10px 20px;">
+                    Send
                 </button>
             </div>
         </div>
@@ -2020,15 +2084,16 @@
 
         const data = caseData.data || {};
 
-        // Render Onboarding Complete Celebration Card
+        // Render Onboarding Complete Status Card
         if (caseData.employee_id) {
             document.getElementById('onboarding-success-card').classList.remove('hidden');
             document.getElementById('success-emp-id').innerText = caseData.employee_id;
             document.getElementById('success-start-date').innerText = data.start_date || caseData.start_date || 'Assigned';
-            document.getElementById('success-welcome-msg').innerText = caseData.onboarding_message || `Welcome to the team, ${data.full_name || 'Employee'}!`;
             const sentEmail = data.welcome_email_sent_to || data.email;
             if (sentEmail) {
-                document.getElementById('success-email-text').innerText = `✉️ Dispatched to: ${sentEmail}`;
+                document.getElementById('success-email-text').innerText = `Dispatched to: ${sentEmail}`;
+            } else {
+                document.getElementById('success-email-text').innerText = `Pending Dispatch`;
             }
         } else {
             document.getElementById('onboarding-success-card').classList.add('hidden');
@@ -2051,7 +2116,7 @@
             row.innerHTML = `
                 <span class="field-label-text">${f.label}:</span>
                 <span class="field-val-text" id="val-${f.key}">${displayVal}</span>
-                <button class="field-edit-btn" onclick="editField('${f.key}', '${val.replace(/'/g, "\\'")}')">✏️ Edit</button>
+                <button class="field-edit-btn" onclick="editField('${f.key}', '${val.replace(/'/g, "\\'")}')">Edit</button>
             `;
             fieldsContainer.appendChild(row);
         });
@@ -2292,15 +2357,15 @@
             const startDate = res.start_date || (res.data && res.data.start_date) || '';
             const emailRecipient = (res.email_status && res.email_status.recipient) || (res.data && res.data.email) || '';
             
-            showToast(`Validated! Assigned ${empId}`, 'success');
-            addSystemMessage(`🎉 Onboarding validated! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · ✉️ Welcome email dispatched to: ' + emailRecipient : ''}`);
+            showToast(`Validated: Assigned ${empId}`, 'success');
+            addSystemMessage(`Onboarding validated. Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · Welcome email dispatched to: ' + emailRecipient : ''}`);
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
                     method: 'POST',
-                    body: { message: "My case has been validated. Please confirm my new Employee ID, assigned start date, and that my official congratulations welcome email has been sent." }
+                    body: { message: "Case has been validated and employee created. Please confirm the Employee ID, start date, and that the welcome email has been sent." }
                 });
-                appendChatMessage('user', "My case has been validated. What is my Employee ID, start date, and email status?");
-                appendChatMessage('agent', resp.response || resp.message || res.onboarding_message || "Congratulations! Onboarding is complete.");
+                appendChatMessage('user', "Case validated. Confirm Employee ID, start date, and welcome email status.");
+                appendChatMessage('agent', resp.response || resp.message || res.onboarding_message || "Employee record created and active in system.");
             } catch(e) {
                 console.warn("Validation agent note error:", e);
             }
@@ -2322,8 +2387,8 @@
         document.getElementById('modal-dob').innerText = d.dob || '—';
         document.getElementById('modal-address').innerText = d.address || '—';
         const sentEmail = d.welcome_email_sent_to || d.email;
-        document.getElementById('modal-email-status').innerText = sentEmail ? `✉️ Dispatched to ${sentEmail}` : 'Pending';
-        document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active Employee' : c.status;
+        document.getElementById('modal-email-status').innerText = sentEmail ? `Dispatched to ${sentEmail}` : 'Pending';
+        document.getElementById('modal-status').innerText = c.status === 'created' ? 'Active Employee' : c.status;
         
         const modalPhoto = document.getElementById('modal-photo-img');
         const modalPlaceholder = document.getElementById('modal-photo-placeholder');
@@ -2494,8 +2559,8 @@ Human Resources & Employee Onboarding Team`;
                 body: { confirmed: true }
             });
             await refreshProfile();
-            showToast("🎉 Employee created successfully!", 'success');
-            addSystemMessage("🎉 Employee record created successfully!");
+            showToast("Employee record created successfully.", 'success');
+            addSystemMessage("Employee record created successfully.");
             loadHrQueue();
         });
     }
