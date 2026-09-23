@@ -17,7 +17,7 @@ properties:
         command: ["/bin/sh"]
         args:
           - "-c"
-          - "apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && rm -rf /srv/app && git clone -b feat/azure-foundry-onboarding https://github.com/Aryan-verma-ai/employee-onboarding-agent-app.git /srv/app && cd /srv/app && pip install --no-cache-dir . && python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
+          - "echo Deploying Version 1caa250 && apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && rm -rf /srv/app && git clone -b feat/azure-foundry-onboarding https://github.com/Aryan-verma-ai/employee-onboarding-agent-app.git /srv/app && cd /srv/app && pip install --no-cache-dir . && python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
         env:
           - name: ENVIRONMENT
             value: production
@@ -61,6 +61,10 @@ properties:
             value: a8780332-fecd-4f97-81b8-3782131af31a
           - name: WORKER_SUBJECT
             value: onboarding-worker
+          - name: ENTRA_AUTHORITY
+            value: https://login.microsoftonline.com/common
+          - name: ENTRA_MULTITENANT
+            value: "true"
     scale:
       minReplicas: 1
       maxReplicas: 1
