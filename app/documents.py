@@ -150,8 +150,12 @@ async def upload_document(
     service = OnboardingService(db, principal)
     case = service.get_case(case_id)
     service.require_consent(case)
-    if case.status == "created":
-        raise HTTPException(409, "Completed cases are immutable")
+    if case.status == "created" and doc_type != "photograph":
+        raise HTTPException(
+            409,
+            "This onboarding case is already finalized (Employee Created). "
+            "Only profile photographs can be added. To onboard another candidate, please start a new case."
+        )
     if doc_type not in DOC_TYPES:
         raise HTTPException(422, "Unsupported document category")
     content = await file.read(settings.max_upload_bytes + 1)
@@ -276,7 +280,7 @@ def extract(
     principal: Principal = Depends(get_principal),
 ):
     service, case, document = authorized_document(case_id, document_id, db, principal)
-    if case.status == "created":
+    if case.status == "created" and document.doc_type != "photograph":
         raise HTTPException(409, "Completed cases are immutable")
     service.require_consent(case)
     if document.doc_type == "photograph":
@@ -315,8 +319,19 @@ async def auto_upload_and_extract(
     service = OnboardingService(db, principal)
     case = service.get_case(case_id)
     service.require_consent(case)
+    fn_lower = (file.filename or "").lower()
+    ct_lower = (file.content_type or "").lower()
+    is_image = ct_lower.startswith("image/")
+    is_explicit_id = any(k in fn_lower for k in ("pan", "pancard", "aadhaar", "aadhar", "resume", "cv"))
+
     if case.status == "created":
-        raise HTTPException(409, "Completed cases are immutable")
+        # Allow profile photograph uploads even after employee creation
+        if not is_image or is_explicit_id:
+            raise HTTPException(
+                409,
+                "This onboarding case is already finalized (Employee Created). "
+                "Only profile photographs can be added. To onboard another candidate, please start a new case."
+            )
 
     content = await file.read(settings.max_upload_bytes + 1)
     validate_upload(content, file.content_type)
@@ -330,15 +345,13 @@ async def auto_upload_and_extract(
         return {"id": existing.id, "version": existing.version, "doc_type": existing.doc_type, "duplicate": True}
 
     # Initial type hint
-    fn_lower = (file.filename or "").lower()
-    ct_lower = (file.content_type or "").lower()
     if any(k in fn_lower for k in ("pan", "pancard")):
         doc_type = "pan"
     elif any(k in fn_lower for k in ("aadhaar", "aadhar")):
         doc_type = "aadhaar"
     elif any(k in fn_lower for k in ("resume", "cv")):
         doc_type = "resume"
-    elif any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")):
+    elif any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")) or (case.status == "created" and is_image):
         doc_type = "photograph"
     else:
         doc_type = "other"

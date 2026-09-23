@@ -1311,6 +1311,9 @@
                     <button onclick="openFullProfileModal()" class="btn" style="background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.4); font-size: 0.82rem; margin-top: 4px;">
                         📄 View Full Record & Dossier
                     </button>
+                    <button onclick="showSetup()" class="btn" style="background: white; color: #065f46; font-weight: 700; font-size: 0.82rem; margin-top: 8px;">
+                        ➕ Start Next Candidate Onboarding
+                    </button>
                 </div>
 
                 <!-- Missing Fields Banner -->
@@ -1395,6 +1398,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="id-badge" id="case-id-chip">Case: None</span>
                     <button onclick="copyToClipboard(currentCaseId)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" title="Copy Case ID">📋</button>
+                    <button onclick="showSetup()" class="btn btn-primary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 600;" title="Start a new onboarding case">➕ New Case</button>
                 </div>
             </div>
 
@@ -2464,6 +2468,7 @@ Human Resources & Employee Onboarding Team`;
         if (!currentCaseId) return showToast("No active case open in workspace!", 'warning');
         
         run(async () => {
+            let uploadedCount = 0;
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 addSystemMessage(`📄 Uploading: ${file.name}...`);
@@ -2471,21 +2476,34 @@ Human Resources & Employee Onboarding Team`;
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                const uploadRes = await api(`/api/cases/${currentCaseId}/documents/auto`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (uploadRes && uploadRes.doc_type === 'photograph') {
-                    addSystemMessage(`📷 Photograph uploaded: ${file.name} — profile picture verified!`);
-                    showToast("Photograph verified & profile picture active!", 'success');
-                } else {
-                    addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
+                try {
+                    const uploadRes = await api(`/api/cases/${currentCaseId}/documents/auto`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (uploadRes && uploadRes.doc_type === 'photograph') {
+                        addSystemMessage(`📷 Photograph uploaded: ${file.name} — profile picture verified!`);
+                        showToast("Photograph verified & profile picture active!", 'success');
+                    } else {
+                        addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
+                    }
+                    uploadedCount++;
+                } catch (upErr) {
+                    const errMsg = upErr.message || '';
+                    if (errMsg.includes("finalized") || errMsg.includes("immutable")) {
+                        addSystemMessage(`⚠️ This candidate is already finalized. To onboard another person, click '➕ New Case' at top.`);
+                        showToast("This case is already finalized. Click '➕ New Case' to onboard another person.", 'warning');
+                    } else {
+                        showToast("Upload error: " + errMsg, 'error');
+                    }
                 }
             }
-            showToast(`${files.length} document(s) uploaded.`, 'info');
-            await refreshDocuments();
-            await refreshProfile();
+            if (uploadedCount > 0) {
+                showToast(`${uploadedCount} document(s) uploaded.`, 'info');
+                await refreshDocuments();
+                await refreshProfile();
+            }
         });
     }
 

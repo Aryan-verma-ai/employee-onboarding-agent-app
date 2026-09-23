@@ -1,5 +1,6 @@
 """Test verification that PAN and Aadhaar photos/scans are accurately classified and extracted."""
 
+import pytest
 from types import SimpleNamespace
 from app.extraction import classify_document
 
@@ -227,4 +228,67 @@ def test_aadhaar_ocr_extraction_filters_uidai_email_and_aadhaar_phone():
     assert not any(c["field"] == "phone" for c in result["candidates"])
     # Download date MUST NOT be accepted as DOB!
     assert "dob" not in accepted
+
+
+@pytest.mark.anyio
+async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
+    from app.models import Base, Case, utcnow
+    from app.auth import Principal
+    from app.documents import auto_upload_and_extract
+    from fastapi import UploadFile, HTTPException, BackgroundTasks
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    import io
+
+    # Mock storage
+    monkeypatch.setattr("app.documents.store_content", lambda key, content, content_type: "clean")
+
+    engine = create_engine("sqlite:///" + str(tmp_path / "completed_upload.db"))
+    Base.metadata.create_all(engine)
+    principal = Principal("hr-user", "tenant-1", frozenset({"HR"}))
+
+    with Session(engine) as db:
+        case = Case(
+            tenant_id="tenant-1",
+            owner_id="hr-user",
+            department="engineering",
+            consent_at=utcnow(),
+            status="created", # Finalized case
+            employee_id="EMP-123456",
+            data={"full_name": "Test Employee", "email": "test@gmail.com"},
+        )
+        db.add(case)
+        db.commit()
+        case_id = case.id
+
+    # 1. Uploading a photo on completed case should SUCCEED
+    photo_file = UploadFile(
+        filename="WhatsApp Image 2026-08-31 at 6.45.52 PM.jpeg",
+        file=io.BytesIO(b"\xff\xd8\xff\xe0" + b"x" * 100),
+        headers={"content-type": "image/jpeg"},
+    )
+    with Session(engine) as db:
+        bg = BackgroundTasks()
+        res = await auto_upload_and_extract(case_id, bg, photo_file, db=db, principal=principal)
+        assert res["doc_type"] == "photograph"
+        assert res["extraction_status"] == "complete"
+
+        # Verify case.data updated with photo
+        updated = db.get(Case, case_id)
+        assert updated.data.get("has_photograph") is True
+        assert updated.data.get("photograph_document_id") == res["id"]
+
+    # 2. Uploading a PDF on completed case should raise 409
+    pdf_file = UploadFile(
+        filename="resume.pdf",
+        file=io.BytesIO(b"%PDF-1.4" + b"x" * 100),
+        headers={"content-type": "application/pdf"},
+    )
+    with Session(engine) as db:
+        bg = BackgroundTasks()
+        with pytest.raises(HTTPException) as exc_info:
+            await auto_upload_and_extract(case_id, bg, pdf_file, db=db, principal=principal)
+        assert exc_info.value.status_code == 409
+        assert "finalized" in exc_info.value.detail.lower()
+
 
