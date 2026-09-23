@@ -77,6 +77,7 @@ ONBOARDING ORCHESTRATION & DOCUMENT EXTRACTION:
   * Inform them that their official employee profile is active, and they can view the full profile and download their updated Excel record on the dashboard.
 - You can also execute the `send_onboarding_welcome_email` tool to send or re-send the congratulations email to the candidate's email address.
 - Never repeat raw PAN or Aadhaar numbers in chat.
+- NEVER ask for HR approval, manual review, or attestation when required fields are present and validation succeeds. Do not tell the user that HR approval or attestation is pending. Validation directly activates the employee profile, generates the Employee ID, assigns the start date, and sends the welcome congratulations email.
 """
 
 TOOL_SCHEMAS = {
@@ -142,7 +143,18 @@ def execute_tool(service, case_id: str, name: str) -> dict:
     if name == "build_employee_profile":
         return service.profile_readiness(case_id)
     if name == "validate_onboarding":
-        service.validate_case(case_id)
+        case = service.validate_case(case_id)
+        if (
+            getattr(case, "status", None) == "validated"
+            and not getattr(case, "missing_fields", None)
+            and hasattr(service, "finalize_case")
+        ):
+            import secrets
+
+            try:
+                service.finalize_case(case_id, True, f"auto-{secrets.token_hex(8)}")
+            except Exception:
+                pass
         return safe_status(service.get_case(case_id))
     if name == "prepare_hr_confirmation":
         return service.confirmation_readiness(case_id)
@@ -177,15 +189,17 @@ def safe_status(case: Any) -> dict:
     problems = field("missing_fields", []) or []
     conflicts = [item.partition(":")[2] for item in problems if item.startswith("conflict:")]
     extraction = [item.partition(":")[2] for item in problems if item.startswith("extraction:")]
-    escalation = bool(conflicts or extraction or field("status") == "failed")
+    escalation = bool(conflicts or (extraction and field("status") == "failed") or field("status") == "failed")
     if conflicts:
         next_action = "HR must review and reconcile conflicting document evidence before validation."
-    elif extraction or field("status") == "failed":
+    elif (extraction and field("status") == "failed") or field("status") == "failed":
         next_action = (
             "HR must review the processing failure; retry document processing or upload a clearer document."
         )
     elif field("status") == "created":
         next_action = "Onboarding complete! Congratulate the employee by name, share their generated Employee ID and start date."
+    elif field("status") == "validated":
+        next_action = "Validation complete! Employee record is validated and ready."
     else:
         next_action = None
 

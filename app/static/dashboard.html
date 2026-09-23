@@ -2158,16 +2158,17 @@
         }
 
         // Action Buttons Visibility
-        document.getElementById('btn-validate').style.display = (caseData.status !== 'validated' && caseData.status !== 'created') ? 'inline-flex' : 'none';
+        document.getElementById('btn-validate').style.display = (caseData.status !== 'created') ? 'inline-flex' : 'none';
         
         const chkHr = document.getElementById('lbl-hr-checkbox');
         const btnCreate = document.getElementById('btn-create-employee');
-        if (caseData.status === 'validated') {
-            chkHr.classList.remove('hidden');
-            btnCreate.classList.remove('hidden');
-        } else {
-            chkHr.classList.add('hidden');
-            btnCreate.classList.add('hidden');
+        if (chkHr) chkHr.classList.add('hidden');
+        if (btnCreate) {
+            if (caseData.status === 'validated') {
+                btnCreate.classList.remove('hidden');
+            } else {
+                btnCreate.classList.add('hidden');
+            }
         }
 
         const btnDownload = document.getElementById('btn-download-confirmation');
@@ -2376,15 +2377,39 @@
     // --- Actions & Validation ---
     async function validateCase() {
         run(async () => {
-            showToast("Validating candidate documents...", 'info');
+            showToast("Validating candidate details...", 'info');
             const res = await api(`/api/cases/${currentCaseId}/validate`, { method: 'POST' });
+            
+            // If validation passed and no missing fields, auto-finalize to create employee record directly
+            if (res.status === 'validated' && (!res.missing_fields || res.missing_fields.length === 0)) {
+                try {
+                    const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : ('idemp-' + Date.now());
+                    const finalRes = await api(`/api/cases/${currentCaseId}/finalize`, {
+                        method: 'POST',
+                        headers: { 'Idempotency-Key': idempotencyKey },
+                        body: { confirmed: true }
+                    });
+                    if (finalRes) Object.assign(res, finalRes);
+                } catch(finErr) {
+                    console.warn("Auto-finalize notice:", finErr);
+                }
+            }
+
             await refreshProfile();
             const empId = res.employee_id || (res.data && res.data.employee_id) || '';
             const startDate = res.start_date || (res.data && res.data.start_date) || '';
             const emailRecipient = (res.email_status && res.email_status.recipient) || (res.data && res.data.email) || '';
             
-            showToast(`Validated: Assigned ${empId}`, 'success');
-            addSystemMessage(`Onboarding validated. Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · Welcome email dispatched to: ' + emailRecipient : ''}`);
+            if (empId) {
+                showToast(`Employee Record Created: ${empId}`, 'success');
+                addSystemMessage(`🎉 Onboarding completed successfully! Employee ID: ${empId}${startDate ? ' · Start Date: ' + startDate : ''}${emailRecipient ? ' · Welcome email dispatched to: ' + emailRecipient : ''}`);
+            } else if (res.status === 'validated') {
+                showToast("Verification successful!", 'success');
+                addSystemMessage("✅ Case validation passed deterministic rules.");
+            } else {
+                showToast("Case requires additional attention or missing information.", 'warning');
+            }
+
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
                     method: 'POST',
@@ -2573,9 +2598,6 @@ Human Resources & Employee Onboarding Team`;
     }
 
     async function finalizeCase() {
-        const hrChecked = document.getElementById('chk-hr-review').checked;
-        if (!hrChecked) return showToast("HR must check the review confirmation box.", 'warning');
-        
         run(async () => {
             const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : ('idemp-' + Date.now());
             await api(`/api/cases/${currentCaseId}/finalize`, {
@@ -2585,7 +2607,7 @@ Human Resources & Employee Onboarding Team`;
             });
             await refreshProfile();
             showToast("Employee record created successfully.", 'success');
-            addSystemMessage("Employee record created successfully.");
+            addSystemMessage("🎉 Employee record created successfully.");
             loadHrQueue();
         });
     }

@@ -10,15 +10,15 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
         "category": "Onboarding",
         "title": "Required Onboarding Documents & Verification",
         "content": (
-            "All new employees must submit the following mandatory documents during onboarding:\n"
-            "1. PAN Card: Mandatory for tax identification and payroll processing. Must match full legal name.\n"
-            "2. Aadhaar Card: Mandatory government identity and address proof. 12-digit UID.\n"
+            "All new employees must provide identity and contact details during onboarding:\n"
+            "1. PAN Card: Tax identification (either PAN or Aadhaar is required).\n"
+            "2. Aadhaar Card: Government identity or address proof (either PAN or Aadhaar is required).\n"
             "3. Resume / Curriculum Vitae: Comprehensive work history and educational qualifications.\n"
             "4. Photograph: Recent passport-size photograph with white/plain background.\n"
             "5. Bank Account Details: Cancelled cheque or bank statement showing account number and IFSC code for salary deposits.\n"
             "Document format guidelines: PDF, PNG, or JPEG files. Scans must be legible with all corners visible.\n"
-            "Automated OCR extracts your Name, Email, Phone, PAN number, and Aadhaar number upon upload.\n"
-            "Once documents are uploaded and verified, HR conducts a final review to create your employee profile."
+            "Automated OCR extracts your Name, Email, Phone, PAN number, and Aadhaar number upon upload, or you can enter details manually.\n"
+            "Once details and documents are provided, validation directly creates and activates your official employee profile."
         ),
         "keywords": [
             "documents",
@@ -41,10 +41,10 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
         "title": "Onboarding Process & Timeline",
         "content": (
             "The employee onboarding process consists of 4 main phases:\n"
-            "Phase 1 - Welcome & Document Upload: The employee receives access to the onboarding workspace and uploads required documents.\n"
+            "Phase 1 - Welcome & Document Upload: The employee receives access to the onboarding workspace and uploads required documents or enters details manually.\n"
             "Phase 2 - OCR Extraction & Verification: Azure Document Intelligence extracts identity fields and populates the profile.\n"
             "Phase 3 - Validation: System deterministic rules check document presence and data format consistency.\n"
-            "Phase 4 - HR Attestation & Finalization: An authorized HR representative verifies the submitted data, confirms accuracy, and generates the unique Employee ID.\n"
+            "Phase 4 - Finalization & Welcome: The system assigns the unique Employee ID and official start working date, activates the employee record immediately, and dispatches the welcome congratulations email.\n"
             "Timeline: The entire document submission process should be completed within 3 business days of joining."
         ),
         "keywords": [
