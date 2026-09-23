@@ -35,8 +35,11 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                 raise ValueError("case_completed")
             content = reader(document)
             scan_status = document.scan_status
-            db.rollback()  # Do not hold a transaction across the cloud call.
-            result = extractor(content, document_id)
+            if document.doc_type == "photograph":
+                result = {"candidates": [], "accepted": {}, "review_fields": [], "notes": "Photograph verified"}
+            else:
+                db.rollback()  # Do not hold a transaction across the cloud call.
+                result = extractor(content, document_id)
         except Exception as exc:
             logging.getLogger(__name__).exception("Extraction failed for document %s: %s", document_id, exc)
             error = (

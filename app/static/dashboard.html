@@ -1201,7 +1201,7 @@
                 <div class="avatar-section">
                     <div class="avatar-wrap">
                         <div id="profile-photo-placeholder" class="avatar-placeholder">👤</div>
-                        <img id="profile-photo-img" src="" alt="Employee Photo" class="avatar-img hidden">
+                        <img id="profile-photo-img" src="" alt="Employee Photo" class="avatar-img hidden" onerror="this.classList.add('hidden'); document.getElementById('profile-photo-placeholder').classList.remove('hidden');">
                     </div>
                 </div>
 
@@ -1394,7 +1394,7 @@
             <div style="display: flex; align-items: center; gap: 20px; background: var(--slate-50); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--slate-200);">
                 <div class="avatar-wrap">
                     <div id="modal-photo-placeholder" class="avatar-placeholder">👤</div>
-                    <img id="modal-photo-img" src="" alt="Employee Photo" class="avatar-img hidden">
+                    <img id="modal-photo-img" src="" alt="Employee Photo" class="avatar-img hidden" onerror="this.classList.add('hidden'); document.getElementById('modal-photo-placeholder').classList.remove('hidden');">
                 </div>
                 <div>
                     <h2 id="modal-emp-name" style="font-size: 1.35rem; font-weight: 800; color: var(--slate-900); margin-bottom: 4px;">Candidate Name</h2>
@@ -1704,6 +1704,18 @@
         document.getElementById('metrics-bar').style.display = 'grid';
         document.getElementById('main-workspace').style.display = 'none';
         document.getElementById('btn-back-hr').classList.add('hidden');
+        if (_currentPhotoBlobUrl) {
+            URL.revokeObjectURL(_currentPhotoBlobUrl);
+            _currentPhotoBlobUrl = null;
+        }
+        _loadedPhotoDocId = null;
+        const img = document.getElementById('profile-photo-img');
+        const placeholder = document.getElementById('profile-photo-placeholder');
+        if (img) {
+            img.src = '';
+            img.classList.add('hidden');
+        }
+        if (placeholder) placeholder.classList.remove('hidden');
         currentCaseId = null;
         stopPolling();
         loadHrQueue();
@@ -1882,14 +1894,14 @@
             'other': '📁 Document'
         };
         
+        let hasPhoto = false;
+        let photoDocId = null;
+        
         docs.forEach(d => {
-            if (d.doc_type === 'photograph') {
+            const isPhoto = d.doc_type === 'photograph' || (d.content_type && d.content_type.startsWith('image/')) || (d.filename && /\.(jpe?g|png|webp)$/i.test(d.filename));
+            if (isPhoto && !hasPhoto) {
                 hasPhoto = true;
-                const img = document.getElementById('profile-photo-img');
-                const placeholder = document.getElementById('profile-photo-placeholder');
-                img.src = `/api/cases/${currentCaseId}/documents/${d.id}/download`;
-                img.classList.remove('hidden');
-                placeholder.classList.add('hidden');
+                photoDocId = d.id;
             }
 
             const item = document.createElement('div');
@@ -1916,9 +1928,13 @@
             docList.appendChild(item);
         });
 
-        if (!hasPhoto) {
-            document.getElementById('profile-photo-img').classList.add('hidden');
-            document.getElementById('profile-photo-placeholder').classList.remove('hidden');
+        if (hasPhoto && photoDocId) {
+            loadProfilePhoto(photoDocId);
+        } else {
+            const img = document.getElementById('profile-photo-img');
+            const placeholder = document.getElementById('profile-photo-placeholder');
+            if (img) img.classList.add('hidden');
+            if (placeholder) placeholder.classList.remove('hidden');
         }
 
         if (anyExtracting && !isExtracting) {
@@ -1957,6 +1973,51 @@
         if (pollInterval) {
             clearInterval(pollInterval);
             pollInterval = null;
+        }
+    }
+
+    let _currentPhotoBlobUrl = null;
+    let _loadedPhotoDocId = null;
+
+    async function loadProfilePhoto(docId) {
+        if (!docId || !currentCaseId) return;
+        if (_loadedPhotoDocId === docId && _currentPhotoBlobUrl) {
+            const img = document.getElementById('profile-photo-img');
+            const placeholder = document.getElementById('profile-photo-placeholder');
+            if (img) {
+                img.src = _currentPhotoBlobUrl;
+                img.classList.remove('hidden');
+            }
+            if (placeholder) placeholder.classList.add('hidden');
+            return;
+        }
+        _loadedPhotoDocId = docId;
+        try {
+            const blob = await api(`/api/cases/${currentCaseId}/documents/${docId}/download`, { responseType: 'blob' });
+            if (_currentPhotoBlobUrl) {
+                URL.revokeObjectURL(_currentPhotoBlobUrl);
+            }
+            _currentPhotoBlobUrl = URL.createObjectURL(blob);
+            const img = document.getElementById('profile-photo-img');
+            const placeholder = document.getElementById('profile-photo-placeholder');
+            if (img) {
+                img.src = _currentPhotoBlobUrl;
+                img.classList.remove('hidden');
+            }
+            if (placeholder) {
+                placeholder.classList.add('hidden');
+            }
+            const modalPhoto = document.getElementById('modal-photo-img');
+            const modalPlaceholder = document.getElementById('modal-photo-placeholder');
+            if (modalPhoto) {
+                modalPhoto.src = _currentPhotoBlobUrl;
+                modalPhoto.classList.remove('hidden');
+            }
+            if (modalPlaceholder) {
+                modalPlaceholder.classList.add('hidden');
+            }
+        } catch(e) {
+            console.warn("Failed to load photo blob:", e);
         }
     }
 
@@ -2003,11 +2064,10 @@
         document.getElementById('modal-email-status').innerText = sentEmail ? `✉️ Dispatched to ${sentEmail}` : 'Pending';
         document.getElementById('modal-status').innerText = c.status === 'created' ? '✅ Active Employee' : c.status;
         
-        const photoImg = document.getElementById('profile-photo-img');
         const modalPhoto = document.getElementById('modal-photo-img');
         const modalPlaceholder = document.getElementById('modal-photo-placeholder');
-        if (photoImg && !photoImg.classList.contains('hidden') && photoImg.src) {
-            modalPhoto.src = photoImg.src;
+        if (_currentPhotoBlobUrl) {
+            modalPhoto.src = _currentPhotoBlobUrl;
             modalPhoto.classList.remove('hidden');
             modalPlaceholder.classList.add('hidden');
         } else {
@@ -2186,15 +2246,21 @@ Human Resources & Employee Onboarding Team`;
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                await api(`/api/cases/${currentCaseId}/documents/auto`, {
+                const uploadRes = await api(`/api/cases/${currentCaseId}/documents/auto`, {
                     method: 'POST',
                     body: formData
                 });
                 
-                addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
+                if (uploadRes && uploadRes.doc_type === 'photograph') {
+                    addSystemMessage(`📷 Photograph uploaded: ${file.name} — profile picture verified!`);
+                    showToast("Photograph verified & profile picture active!", 'success');
+                } else {
+                    addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
+                }
             }
-            showToast(`${files.length} document(s) uploaded. OCR running...`, 'info');
+            showToast(`${files.length} document(s) uploaded.`, 'info');
             await refreshDocuments();
+            await refreshProfile();
         });
     }
 

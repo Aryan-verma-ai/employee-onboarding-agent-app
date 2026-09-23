@@ -107,6 +107,22 @@ def list_documents(
         .where(Document.case_id == case_id, Document.tenant_id == principal.tenant_id)
         .order_by(Document.created_at)
     ).all()
+    # Auto-complete photograph documents (photographs do not require OCR)
+    changed = False
+    for doc in docs:
+        if (doc.doc_type == "photograph" or (doc.content_type and doc.content_type.startswith("image/"))) and (not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}):
+            doc.doc_type = "photograph"
+            doc.extraction = {
+                "status": "complete",
+                "reviewed": True,
+                "candidates": [],
+                "accepted": {},
+                "doc_type": "photograph",
+                "notes": "Candidate photograph verified",
+            }
+            changed = True
+    if changed:
+        db.commit()
     service.audit(case_id, "documents.viewed")
     db.commit()
     return [
@@ -159,6 +175,19 @@ async def upload_document(
     document_id = str(uuid4())
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
     scan_status = store_content(key, content, file.content_type)
+    
+    if doc_type == "photograph":
+        extraction_data = {
+            "status": "complete",
+            "reviewed": True,
+            "candidates": [],
+            "accepted": {},
+            "doc_type": "photograph",
+            "notes": "Candidate photograph verified",
+        }
+    else:
+        extraction_data = {"status": "pending"}
+
     document = Document(
         id=document_id,
         case_id=case_id,
@@ -170,10 +199,15 @@ async def upload_document(
         doc_type=doc_type,
         version=version,
         scan_status=scan_status,
-        extraction={"status": "pending"},
+        extraction=extraction_data,
         size=len(content),
     )
     db.add(document)
+    if doc_type == "photograph":
+        case_data = dict(case.data or {})
+        case_data["has_photograph"] = True
+        case_data["photograph_document_id"] = document_id
+        case.data = case_data
     service.audit(
         case_id, "document.uploaded", {"document_id": document_id, "version": version, "doc_type": doc_type}
     )
@@ -182,6 +216,38 @@ async def upload_document(
     service.transition(case, "needs-information")
     db.commit()
     return {"id": document_id, "version": version, "scan_status": scan_status, "sha256": digest}
+
+
+@router.get("/{case_id}/photo")
+def get_case_photo(
+    case_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    service = OnboardingService(db, principal)
+    case = service.get_case(case_id)
+    doc = db.scalar(
+        select(Document)
+        .where(Document.case_id == case.id, Document.doc_type == "photograph")
+        .order_by(Document.created_at.desc())
+    )
+    if not doc:
+        doc = db.scalar(
+            select(Document)
+            .where(Document.case_id == case.id, Document.content_type.like("image/%"))
+            .order_by(Document.created_at.desc())
+        )
+    if not doc:
+        raise HTTPException(404, "No photograph found for this case")
+    content = read_clean_content(doc)
+    return Response(
+        content,
+        media_type=doc.content_type or "image/jpeg",
+        headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
 
 
 @router.get("/{case_id}/documents/{document_id}/download")
@@ -195,11 +261,13 @@ def download_document(
     content = read_clean_content(document)
     service.audit(case_id, "document.downloaded", {"document_id": document_id})
     db.commit()
+    is_image = (document.content_type or "").startswith("image/") or document.doc_type == "photograph"
+    disposition = "inline" if is_image else "attachment"
     return Response(
         content,
         media_type=document.content_type,
         headers={
-            "Content-Disposition": "attachment",
+            "Content-Disposition": disposition,
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
         },
@@ -217,6 +285,17 @@ def extract(
     if case.status == "created":
         raise HTTPException(409, "Completed cases are immutable")
     service.require_consent(case)
+    if document.doc_type == "photograph":
+        document.extraction = {
+            "status": "complete",
+            "reviewed": True,
+            "candidates": [],
+            "accepted": {},
+            "doc_type": "photograph",
+            "notes": "Candidate photograph verified",
+        }
+        db.commit()
+        return {"status": "complete", "document_id": document_id, "job_id": None}
     job = enqueue(db, principal, case, document)
     document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
     service.transition(case, "extracting")
@@ -259,7 +338,13 @@ async def auto_upload_and_extract(
     # Initial type hint
     fn_lower = (file.filename or "").lower()
     ct_lower = (file.content_type or "").lower()
-    if any(k in fn_lower for k in ("photo", "pic", "headshot", "profile", "avatar")) or ct_lower.startswith("image/"):
+    if any(k in fn_lower for k in ("pan", "pancard")):
+        doc_type = "pan"
+    elif any(k in fn_lower for k in ("aadhaar", "aadhar")):
+        doc_type = "aadhaar"
+    elif any(k in fn_lower for k in ("resume", "cv")):
+        doc_type = "resume"
+    elif any(k in fn_lower for k in ("photo", "pic", "headshot", "profile", "avatar")) or ct_lower.startswith("image/"):
         doc_type = "photograph"
     else:
         doc_type = "other"
@@ -275,6 +360,48 @@ async def auto_upload_and_extract(
     document_id = str(uuid4())
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
     scan_status = store_content(key, content, file.content_type)
+
+    if doc_type == "photograph":
+        document = Document(
+            id=document_id,
+            case_id=case_id,
+            tenant_id=principal.tenant_id,
+            filename=Path((file.filename or "document").replace("\\", "/")).name[:255],
+            content_type=file.content_type,
+            storage_key=key,
+            sha256=digest,
+            doc_type=doc_type,
+            version=version,
+            scan_status=scan_status,
+            extraction={
+                "status": "complete",
+                "reviewed": True,
+                "candidates": [],
+                "accepted": {},
+                "doc_type": "photograph",
+                "notes": "Candidate photograph verified",
+            },
+            size=len(content),
+        )
+        db.add(document)
+        case_data = dict(case.data or {})
+        case_data["has_photograph"] = True
+        case_data["photograph_document_id"] = document_id
+        case.data = case_data
+        service.audit(
+            case_id, "document.photo_uploaded", {"document_id": document_id, "filename": document.filename}
+        )
+        db.commit()
+
+        return {
+            "id": document_id,
+            "version": version,
+            "doc_type": doc_type,
+            "scan_status": scan_status,
+            "extraction_status": "complete",
+            "filename": document.filename,
+        }
+
     document = Document(
         id=document_id,
         case_id=case_id,

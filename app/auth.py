@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 
 from .config import settings
 
@@ -23,15 +23,21 @@ def signing_keys(tenant="common"):
     return jwt.PyJWKClient(f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys")
 
 
-def get_principal(authorization: str | None = Header(default=None)) -> Principal:
+def get_principal(
+    authorization: str | None = Header(default=None),
+    token_param: str | None = Query(default=None, alias="token"),
+) -> Principal:
     # Development identity cannot be supplied by caller-controlled role headers.
     if settings.environment == "development" and settings.allow_dev_auth:
         return Principal("local-developer", "local-tenant", frozenset({"HR"}))
     if not settings.entra_audience:
         raise HTTPException(503, "Entra authentication is not configured")
-    if not authorization or not authorization.startswith("Bearer "):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif token_param:
+        token = token_param
+    else:
         raise HTTPException(401, "Bearer token required", headers={"WWW-Authenticate": "Bearer"})
-    token = authorization[7:]
     try:
         unverified = jwt.decode(token, options={"verify_signature": False})
         token_tid = unverified.get("tid", "common")
