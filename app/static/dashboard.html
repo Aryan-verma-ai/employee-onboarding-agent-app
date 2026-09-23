@@ -86,7 +86,8 @@
         <strong style="font-size: 1.2em;">🤖 Foundry Agent · Employee Onboarding</strong>
     </div>
     <div class="user-info">
-        <span id="auth-status">Checking auth...</span> | 
+        <span id="auth-status">Checking auth...</span>
+        <button id="btn-sign-in" onclick="signInWithPrompt()" style="margin-left: 8px; padding: 4px 10px; font-size: 0.82em; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer;">🔑 Sign In / Switch</button> | 
         <span id="user-name"></span>
         <button id="btn-back-hr" class="btn-secondary hidden" style="margin-left: 15px; padding: 4px 8px; font-size: 0.8em;" onclick="closeWorkspace()">← Back to HR Queue</button>
     </div>
@@ -310,26 +311,59 @@
             });
             await authClient.initialize();
             
-            // Try silent sign-in first
+            // Check if accounts exist and test silent token
             const accounts = authClient.getAllAccounts();
             if (accounts.length > 0) {
-                authAccount = accounts[0];
-            } else {
-                // Popup sign-in
-                const response = await authClient.loginPopup({
-                    scopes: [config.scope],
-                    prompt: 'select_account'
-                });
-                authAccount = response.account;
+                try {
+                    const silentResp = await authClient.acquireTokenSilent({
+                        scopes: [config.scope],
+                        account: accounts[0]
+                    });
+                    authAccount = silentResp.account || accounts[0];
+                    document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
+                    document.getElementById('auth-status').innerText = 'Authenticated';
+                    document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+                    return true;
+                } catch(silentErr) {
+                    console.warn("Silent token failed, prompting interactive sign-in", silentErr);
+                }
             }
-            
+            // Prompt sign in with account selection
+            const response = await authClient.loginPopup({
+                scopes: [config.scope],
+                prompt: 'select_account'
+            });
+            authAccount = response.account;
             document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
             document.getElementById('auth-status').innerText = 'Authenticated';
+            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
             return true;
         } catch (error) {
             console.error("Auth error", error);
             document.getElementById('auth-status').innerText = 'Sign-in required';
+            document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
             return false;
+        }
+    }
+
+    async function signInWithPrompt() {
+        if (!authClient || !window._authConfig) return;
+        try {
+            document.getElementById('auth-status').innerText = 'Signing in...';
+            const response = await authClient.loginPopup({
+                scopes: [window._authConfig.scope],
+                prompt: 'select_account'
+            });
+            authAccount = response.account;
+            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
+            document.getElementById('auth-status').innerText = 'Authenticated';
+            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+            if (currentCaseId) await refreshProfile();
+            loadHrQueue();
+        } catch (err) {
+            console.error("Sign-in error:", err);
+            document.getElementById('auth-status').innerText = 'Sign-in required';
+            alert("Sign-in error: " + (err.errorMessage || err.message || err));
         }
     }
 

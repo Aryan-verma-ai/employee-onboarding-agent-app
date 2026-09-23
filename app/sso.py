@@ -52,7 +52,7 @@ def auth_config():
     }
     if configured:
         authority = os.getenv("ENTRA_AUTHORITY") or (
-            "https://login.microsoftonline.com/organizations"
+            "https://login.microsoftonline.com/common"
             if os.getenv("ENTRA_MULTITENANT", "true").lower() == "true"
             else f"https://login.microsoftonline.com/{tenant}"
         )
