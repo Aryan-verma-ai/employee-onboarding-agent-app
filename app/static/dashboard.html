@@ -1455,7 +1455,7 @@
                 <div class="chat-agent-info">
                     <div class="chat-agent-avatar" style="background: #2563eb; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em;">AI</div>
                     <div>
-                        <div class="chat-agent-name">Onboardly Copilot</div>
+                        <div class="chat-agent-name">Azure Onboardly</div>
                         <div class="chat-agent-status">
                             <span class="status-dot"></span>
                             <span>Azure Document Intelligence OCR · Azure OpenAI GPT-4o</span>
@@ -2057,7 +2057,7 @@
             currentCaseId = caseData.id;
             showWorkspace();
             await refreshProfile();
-            addSystemMessage("Case initialized. Connecting to Onboardly Copilot...");
+            addSystemMessage("Case initialized. Connecting to Azure Onboardly...");
             
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
