@@ -305,41 +305,50 @@
                     redirectUri: config.redirect_uri
                 },
                 cache: {
-                    cacheLocation: "memoryStorage",
-                    temporaryCacheLocation: "sessionStorage"
+                    cacheLocation: "localStorage",
+                    storeAuthStateInCookie: false
                 }
             });
             await authClient.initialize();
             
-            // Check if accounts exist and test silent token
+            // Check for redirect response if any
+            try {
+                const redirectResp = await authClient.handleRedirectPromise();
+                if (redirectResp && redirectResp.account) {
+                    authAccount = redirectResp.account;
+                }
+            } catch(redErr) {
+                console.warn("handleRedirectPromise err:", redErr);
+            }
+
             const accounts = authClient.getAllAccounts();
             if (accounts.length > 0) {
+                authAccount = accounts[0];
                 try {
                     const silentResp = await authClient.acquireTokenSilent({
                         scopes: [config.scope],
-                        account: accounts[0]
+                        account: authAccount
                     });
-                    authAccount = silentResp.account || accounts[0];
+                    authAccount = silentResp.account || authAccount;
                     document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
                     document.getElementById('auth-status').innerText = 'Authenticated';
                     document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
                     return true;
                 } catch(silentErr) {
-                    console.warn("Silent token failed, prompting interactive sign-in", silentErr);
+                    console.warn("Silent token failed, using existing account display", silentErr);
+                    document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
+                    document.getElementById('auth-status').innerText = 'Sign-in required';
+                    document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
+                    return false;
                 }
             }
-            // Prompt sign in with account selection
-            const response = await authClient.loginPopup({
-                scopes: [config.scope],
-                prompt: 'select_account'
-            });
-            authAccount = response.account;
-            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
-            document.getElementById('auth-status').innerText = 'Authenticated';
-            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
-            return true;
+
+            // No active accounts found in local storage
+            document.getElementById('auth-status').innerText = 'Sign-in required';
+            document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
+            return false;
         } catch (error) {
-            console.error("Auth error", error);
+            console.error("Auth init error", error);
             document.getElementById('auth-status').innerText = 'Sign-in required';
             document.getElementById('btn-sign-in').innerText = '🔑 Sign In';
             return false;
@@ -363,14 +372,30 @@
         } catch (err) {
             console.error("Sign-in error:", err);
             document.getElementById('auth-status').innerText = 'Sign-in required';
-            alert("Sign-in error: " + (err.errorMessage || err.message || err));
+            if (err.errorCode !== 'user_cancelled') {
+                alert("Sign-in error: " + (err.errorMessage || err.message || err));
+            }
         }
     }
 
     async function authHeaders() {
         // Development mode — no auth headers needed
         if (window._authConfig && window._authConfig.development) return {};
-        if (!authAccount || !authClient) throw new Error("Not authenticated. Please refresh the page.");
+        if (!authAccount && authClient) {
+            const accs = authClient.getAllAccounts();
+            if (accs.length > 0) authAccount = accs[0];
+        }
+        if (!authAccount || !authClient) {
+            // Interactive login triggered on user action
+            const res = await authClient.loginPopup({
+                scopes: [window._authConfig.scope],
+                prompt: 'select_account'
+            });
+            authAccount = res.account;
+            document.getElementById('user-name').innerText = authAccount.name || authAccount.username;
+            document.getElementById('auth-status').innerText = 'Authenticated';
+            document.getElementById('btn-sign-in').innerText = '🔄 Switch Account';
+        }
         try {
             const response = await authClient.acquireTokenSilent({
                 scopes: [window._authConfig.scope],
@@ -378,9 +403,10 @@
             });
             return { 'Authorization': `Bearer ${response.accessToken}` };
         } catch (error) {
-            if (error instanceof msal.InteractionRequiredAuthError) {
+            if (error instanceof msal.InteractionRequiredAuthError || error.name === 'InteractionRequiredAuthError') {
                 const response = await authClient.acquireTokenPopup({
-                    scopes: [window._authConfig.scope]
+                    scopes: [window._authConfig.scope],
+                    account: authAccount
                 });
                 return { 'Authorization': `Bearer ${response.accessToken}` };
             }

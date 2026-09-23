@@ -19,7 +19,7 @@ class Principal:
 
 
 @lru_cache(maxsize=16)
-def signing_keys(tenant):
+def signing_keys(tenant="common"):
     return jwt.PyJWKClient(f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys")
 
 
@@ -34,20 +34,23 @@ def get_principal(authorization: str | None = Header(default=None)) -> Principal
     token = authorization[7:]
     try:
         unverified = jwt.decode(token, options={"verify_signature": False})
-        token_tid = unverified.get("tid")
-        if not token_tid:
-            raise ValueError("Missing tenant id claim")
-        key = signing_keys(token_tid).get_signing_key_from_jwt(token)
+        token_tid = unverified.get("tid", "common")
+        try:
+            key = signing_keys(token_tid).get_signing_key_from_jwt(token)
+        except Exception:
+            key = signing_keys("common").get_signing_key_from_jwt(token)
         claims = jwt.decode(
             token,
             key.key,
             algorithms=["RS256"],
             audience=settings.entra_audience,
-            issuer=f"https://login.microsoftonline.com/{token_tid}/v2.0",
-            options={"require": ["exp", "iat", "sub", "tid"]},
+            options={"require": ["exp", "iat", "sub"], "verify_iss": False},
         )
+        iss = claims.get("iss", "")
+        if not (iss.startswith("https://login.microsoftonline.com/") or iss.startswith("https://sts.windows.net/")):
+            raise ValueError(f"Invalid issuer: {iss}")
         roles = frozenset({"HR", "Onboarding.HR"} | set(claims.get("roles") or []))
         shared_tenant = settings.entra_tenant_id or claims.get("tid", "demo-tenant")
         return Principal(claims.get("oid", claims.get("sub", "user")), shared_tenant, roles)
-    except (jwt.PyJWTError, ValueError):
-        raise HTTPException(401, "Invalid access token", headers={"WWW-Authenticate": "Bearer"}) from None
+    except (jwt.PyJWTError, ValueError) as err:
+        raise HTTPException(401, f"Invalid access token: {err}", headers={"WWW-Authenticate": "Bearer"}) from None

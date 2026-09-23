@@ -51,11 +51,7 @@ def auth_config():
         "development": settings.environment == "development" and settings.allow_dev_auth,
     }
     if configured:
-        authority = os.getenv("ENTRA_AUTHORITY") or (
-            "https://login.microsoftonline.com/common"
-            if os.getenv("ENTRA_MULTITENANT", "true").lower() == "true"
-            else f"https://login.microsoftonline.com/{tenant}"
-        )
+        authority = os.getenv("ENTRA_AUTHORITY") or "https://login.microsoftonline.com/common"
         body.update(
             client_id=client,
             authority=authority,
