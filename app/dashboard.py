@@ -188,12 +188,14 @@ def export_cases(
 
 def cascade_delete_case(db: Session, case_id: str):
     # 1. Extraction jobs first (they foreign-key both Document and Case)
-    for job in db.scalars(select(ExtractionJob).where(ExtractionJob.case_id == case_id)).all():
-        db.delete(job)
+    jobs = set(db.scalars(select(ExtractionJob).where(ExtractionJob.case_id == case_id)).all())
     doc_ids = db.scalars(select(Document.id).where(Document.case_id == case_id)).all()
     if doc_ids:
         for job in db.scalars(select(ExtractionJob).where(ExtractionJob.document_id.in_(doc_ids))).all():
-            db.delete(job)
+            jobs.add(job)
+    for job in jobs:
+        db.delete(job)
+
     # 2. Documents
     for doc in db.scalars(select(Document).where(Document.case_id == case_id)).all():
         db.delete(doc)
@@ -249,13 +251,18 @@ def clear_failed_cases(
         ).all()
         count = 0
         for case in failed_cases:
-            cascade_delete_case(db, case.id)
-            count += 1
-        db.commit()
+            try:
+                cascade_delete_case(db, case.id)
+                db.commit()
+                count += 1
+            except Exception as case_err:
+                db.rollback()
+                logger.warning("Failed to delete failed case %s: %s", case.id, case_err)
         return {"status": "cleared", "deleted_count": count}
     except Exception as err:
         db.rollback()
         logger.exception("Failed to clear failed cases: %s", err)
         raise HTTPException(500, f"Failed to clear failed cases: {err}")
+
 
 
