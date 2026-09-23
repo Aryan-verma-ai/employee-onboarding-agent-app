@@ -98,10 +98,10 @@ TOOL_SCHEMAS = {
             "properties": {
                 "email": {
                     "type": "string",
-                    "description": "Optional recipient email address. If omitted, uses the employee's registered email from onboarding documents."
+                    "description": "Recipient email address. Pass empty string \"\" to use candidate's registered email from onboarding documents."
                 }
             },
-            "required": [],
+            "required": ["email"],
             "additionalProperties": False,
         },
     },
@@ -465,7 +465,9 @@ def _chat(case_id, body, db, principal):
     except HTTPException:
         raise
     except Exception as exc:
-        service.audit(case_id, "foundry.failed", {"error_type": type(exc).__name__})
+        import logging
+        logging.getLogger(__name__).exception("Foundry chat failed for case %s: %s", case_id, exc)
+        service.audit(case_id, "foundry.failed", {"error_type": type(exc).__name__, "message": str(exc)[:300]})
         db.commit()
         raise HTTPException(502, "Foundry agent unavailable; please retry") from exc
     finally:
