@@ -349,8 +349,11 @@ class FoundryGateway:
                     if call.name == "validate_onboarding":
                         service.validate_case(case_id)
                         case = service.get_case(case_id)
+                        case_data = case.data if hasattr(case, "data") else (case.get("data", {}) if isinstance(case, dict) else {})
+                        emp_id = getattr(case, "employee_id", None) or (case.get("employee_id") if isinstance(case, dict) else None)
+                        dept = getattr(case, "department", None) or (case.get("department") if isinstance(case, dict) else None)
                         from .notifications import send_welcome_email
-                        email_res = send_welcome_email(case.data, case.employee_id, case.department)
+                        email_res = send_welcome_email(case_data, emp_id, dept)
                         service.audit(case_id, "foundry.welcome_email", email_res)
                         result = {
                             **safe_status(case),
@@ -358,13 +361,16 @@ class FoundryGateway:
                         }
                     elif call.name == "send_onboarding_welcome_email":
                         case = service.get_case(case_id)
+                        case_data = case.data if hasattr(case, "data") else (case.get("data", {}) if isinstance(case, dict) else {})
+                        emp_id = getattr(case, "employee_id", None) or (case.get("employee_id") if isinstance(case, dict) else None)
+                        dept = getattr(case, "department", None) or (case.get("department") if isinstance(case, dict) else None)
                         recipient = arguments.get("email") if isinstance(arguments, dict) else None
                         from .notifications import send_welcome_email
                         email_res = send_welcome_email(
-                            case_data=case.data,
-                            employee_id=case.employee_id or "PENDING",
-                            department=case.department,
-                            override_recipient=recipient,
+                            case_data=case_data,
+                            employee_id=emp_id or "PENDING",
+                            department=dept,
+                            recipient_override=recipient
                         )
                         service.audit(case_id, "foundry.welcome_email", email_res)
                         result = {

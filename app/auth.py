@@ -47,7 +47,10 @@ def get_principal(authorization: str | None = Header(default=None)) -> Principal
             options={"require": ["exp", "iat", "sub"], "verify_iss": False},
         )
         iss = claims.get("iss", "")
-        if not (iss.startswith("https://login.microsoftonline.com/") or iss.startswith("https://sts.windows.net/")):
+        if iss not in (
+            f"https://login.microsoftonline.com/{token_tid}/v2.0",
+            f"https://sts.windows.net/{token_tid}/",
+        ):
             raise ValueError(f"Invalid issuer: {iss}")
         roles = frozenset({"HR", "Onboarding.HR"} | set(claims.get("roles") or []))
         shared_tenant = settings.entra_tenant_id or claims.get("tid", "demo-tenant")
