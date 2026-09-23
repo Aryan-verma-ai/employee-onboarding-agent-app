@@ -242,6 +242,9 @@ class OnboardingService:
         if prior:
             if prior.case_id != case_id:
                 raise HTTPException(409, "Idempotency key belongs to another case")
+            if prior.employee_id:
+                case.employee_id = prior.employee_id
+                case.status = "created"
             return case
         # Revalidate within the finalization transaction; never trust a model's status.
         if case.status not in ("validated", "created") and self.validation_errors(case):
@@ -295,6 +298,9 @@ class OnboardingService:
             if prior and prior.case_id != case_id:
                 raise HTTPException(409, "Idempotency key belongs to another case") from None
             case = self.get_case(case_id)
+            if prior and prior.employee_id:
+                case.employee_id = prior.employee_id
+                case.status = "created"
             if case.status != "created":
                 raise HTTPException(409, "Concurrent finalization; retry with the same key") from None
         return case
