@@ -189,7 +189,9 @@ def safe_status(case: Any) -> dict:
     problems = field("missing_fields", []) or []
     conflicts = [item.partition(":")[2] for item in problems if item.startswith("conflict:")]
     extraction = [item.partition(":")[2] for item in problems if item.startswith("extraction:")]
-    escalation = bool(conflicts or (extraction and field("status") == "failed") or field("status") == "failed")
+    escalation = bool(
+        conflicts or (extraction and field("status") == "failed") or field("status") == "failed"
+    )
     if conflicts:
         next_action = "HR must review and reconcile conflicting document evidence before validation."
     elif (extraction and field("status") == "failed") or field("status") == "failed":
