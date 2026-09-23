@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Agent HR Workspace · Employee Onboarding</title>
+    <title>Onboardly · Employee Onboarding Agent</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1185,10 +1185,10 @@
 <!-- Header Navigation -->
 <header>
     <div class="brand">
-        <div class="brand-icon">🤖</div>
+        <div class="brand-icon">✦</div>
         <div>
-            <div class="brand-title">Foundry AI Agent</div>
-            <div class="brand-subtitle">HR & Employee Onboarding Workspace</div>
+            <div class="brand-title">Onboardly</div>
+            <div class="brand-subtitle">Employee Onboarding Agent</div>
         </div>
     </div>
     
@@ -1455,7 +1455,7 @@
                 <div class="chat-agent-info">
                     <div class="chat-agent-avatar" style="background: #2563eb; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em;">AI</div>
                     <div>
-                        <div class="chat-agent-name">Foundry Onboarding Copilot</div>
+                        <div class="chat-agent-name">Onboardly Copilot</div>
                         <div class="chat-agent-status">
                             <span class="status-dot"></span>
                             <span>Azure Document Intelligence OCR · Azure OpenAI GPT-4o</span>
@@ -2027,6 +2027,21 @@
         loadHrQueue();
     }
 
+    function showSetup() {
+        closeWorkspace();
+        const resumeInput = document.getElementById('resume-id');
+        if (resumeInput) resumeInput.value = '';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const setupEl = document.getElementById('setup-section');
+        if (setupEl) {
+            setupEl.scrollIntoView({ behavior: 'smooth' });
+            setTimeout(() => {
+                const deptSelect = document.getElementById('new-dept');
+                if (deptSelect) deptSelect.focus();
+            }, 100);
+        }
+    }
+
     // --- Case Actions ---
     async function createNewCase() {
         const dept = document.getElementById('new-dept').value;
@@ -2042,7 +2057,7 @@
             currentCaseId = caseData.id;
             showWorkspace();
             await refreshProfile();
-            addSystemMessage("Case initialized. Connecting to Foundry Agent...");
+            addSystemMessage("Case initialized. Connecting to Onboardly Copilot...");
             
             try {
                 const resp = await api(`/api/cases/${currentCaseId}/chat`, {
