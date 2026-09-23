@@ -1370,6 +1370,10 @@
                     📜 Download Official Confirmation (JSON)
                 </button>
 
+                <button id="btn-edit-dossier" onclick="openFullProfileModal(); toggleModalEditMode();" class="btn btn-secondary hidden" style="width: 100%; border-color: var(--primary); color: var(--primary); font-weight: 700;">
+                    ✏️ Edit & Push Employee Updates
+                </button>
+
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
                     <button id="btn-withdraw-consent" onclick="withdrawConsent()" class="btn btn-danger" style="font-size: 0.78rem; padding: 7px;">
                         Withdraw Consent
@@ -1527,10 +1531,17 @@
             </div>
         </div>
 
-        <div class="modal-footer">
-            <button onclick="resendWelcomeEmail()" class="btn btn-secondary">⚡ Resend Email</button>
-            <button onclick="exportProfile()" class="btn btn-success">📥 Download Excel Record</button>
-            <button onclick="closeFullProfileModal()" class="btn btn-secondary">Close</button>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-modal-edit" onclick="toggleModalEditMode()" class="btn btn-primary">✏️ Edit Details</button>
+                <button id="btn-modal-save" onclick="saveModalDetails()" class="btn btn-success hidden">💾 Save & Push Updates</button>
+                <button id="btn-modal-cancel" onclick="cancelModalEditMode()" class="btn btn-secondary hidden">Cancel</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="resendWelcomeEmail()" class="btn btn-secondary">⚡ Resend Email</button>
+                <button onclick="exportProfile()" class="btn btn-success">📥 Download Excel</button>
+                <button onclick="closeFullProfileModal()" class="btn btn-secondary">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1549,6 +1560,7 @@
 
     const PROFILE_FIELDS = [
         { key: 'full_name', label: 'Full Name' },
+        { key: 'department', label: 'Department' },
         { key: 'email', label: 'Email Address' },
         { key: 'phone', label: 'Phone Number' },
         { key: 'pan', label: 'PAN Number' },
@@ -2027,16 +2039,19 @@
         fieldsContainer.innerHTML = '';
         
         PROFILE_FIELDS.forEach(f => {
-            const val = data[f.key] || '';
+            let val = data[f.key] || '';
+            if (f.key === 'department' && !val && caseData.department) {
+                val = caseData.department;
+            }
             const row = document.createElement('div');
             row.className = 'field-item';
             
-            const displayVal = val ? val : '—';
+            const displayVal = val ? (f.key === 'department' ? val.toUpperCase() : val) : '—';
             
             row.innerHTML = `
                 <span class="field-label-text">${f.label}:</span>
                 <span class="field-val-text" id="val-${f.key}">${displayVal}</span>
-                <button class="field-edit-btn" onclick="editField('${f.key}', '${val.replace(/'/g, "\\'")}')">Edit</button>
+                <button class="field-edit-btn" onclick="editField('${f.key}', '${val.replace(/'/g, "\\'")}')">✏️ Edit</button>
             `;
             fieldsContainer.appendChild(row);
         });
@@ -2065,11 +2080,14 @@
         }
 
         const btnDownload = document.getElementById('btn-download-confirmation');
+        const btnEditDossier = document.getElementById('btn-edit-dossier');
         if (caseData.status === 'created') {
             btnDownload.classList.remove('hidden');
+            if (btnEditDossier) btnEditDossier.classList.remove('hidden');
             document.getElementById('btn-withdraw-consent').style.display = 'none';
         } else {
             btnDownload.classList.add('hidden');
+            if (btnEditDossier) btnEditDossier.classList.add('hidden');
             document.getElementById('btn-withdraw-consent').style.display = 'inline-flex';
         }
 
@@ -2078,11 +2096,25 @@
 
     function editField(key, currentValue) {
         const valContainer = document.getElementById(`val-${key}`);
-        valContainer.innerHTML = `
-            <input type="text" class="form-input" style="padding: 4px 8px; font-size: 0.85rem;" id="input-${key}" value="${currentValue}" onkeypress="if(event.key==='Enter') saveField('${key}')">
-        `;
-        document.getElementById(`input-${key}`).focus();
-        valContainer.nextElementSibling.innerText = 'Save';
+        if (!valContainer) return;
+        if (key === 'department') {
+            const curr = (currentValue || 'engineering').toLowerCase();
+            valContainer.innerHTML = `
+                <select id="input-${key}" class="form-input" style="padding: 4px 8px; font-size: 0.85rem;">
+                    <option value="engineering" ${curr === 'engineering' ? 'selected' : ''}>ENGINEERING</option>
+                    <option value="hr" ${curr === 'hr' ? 'selected' : ''}>HR</option>
+                    <option value="finance" ${curr === 'finance' ? 'selected' : ''}>FINANCE</option>
+                    <option value="sales" ${curr === 'sales' ? 'selected' : ''}>SALES</option>
+                    <option value="operations" ${curr === 'operations' ? 'selected' : ''}>OPERATIONS</option>
+                </select>
+            `;
+        } else {
+            valContainer.innerHTML = `
+                <input type="text" class="form-input" style="padding: 4px 8px; font-size: 0.85rem;" id="input-${key}" value="${currentValue}" onkeypress="if(event.key==='Enter') saveField('${key}')">
+            `;
+            document.getElementById(`input-${key}`).focus();
+        }
+        valContainer.nextElementSibling.innerText = '💾 Save & Push';
         valContainer.nextElementSibling.onclick = () => saveField(key);
     }
 
@@ -2282,7 +2314,7 @@
         document.getElementById('modal-emp-name').innerText = d.full_name || 'Candidate';
         document.getElementById('modal-emp-id-badge').innerText = c.employee_id || 'Pending ID';
         document.getElementById('modal-start-date').innerText = d.start_date || c.start_date || 'Assigned';
-        document.getElementById('modal-dept').innerText = c.department || 'General';
+        document.getElementById('modal-dept').innerText = (c.department || d.department || 'General').toUpperCase();
         document.getElementById('modal-email').innerText = d.email || '—';
         document.getElementById('modal-phone').innerText = d.phone || '—';
         document.getElementById('modal-pan').innerText = d.pan ? d.pan : '—';
@@ -2307,7 +2339,86 @@
         document.getElementById('full-profile-modal').classList.remove('hidden');
     }
 
+    let isModalEditMode = false;
+
+    function toggleModalEditMode() {
+        if (!window._currentCaseData) return;
+        isModalEditMode = true;
+        const c = window._currentCaseData;
+        const d = c.data || {};
+        
+        document.getElementById('btn-modal-edit').classList.add('hidden');
+        document.getElementById('btn-modal-save').classList.remove('hidden');
+        document.getElementById('btn-modal-cancel').classList.remove('hidden');
+
+        document.getElementById('modal-emp-name').innerHTML = `<input type="text" class="form-input" style="padding: 4px 8px; font-size: 1.15rem; font-weight: 700; width: 100%; max-width: 320px;" id="edit-modal-name" value="${(d.full_name || '').replace(/"/g, '&quot;')}" placeholder="Full Name">`;
+        
+        const currDept = (c.department || d.department || 'engineering').toLowerCase();
+        document.getElementById('modal-dept').innerHTML = `
+            <select id="edit-modal-dept" class="form-input" style="padding: 4px 8px; font-size: 0.85rem; font-weight: 600;">
+                <option value="engineering" ${currDept === 'engineering' ? 'selected' : ''}>ENGINEERING</option>
+                <option value="hr" ${currDept === 'hr' ? 'selected' : ''}>HR</option>
+                <option value="finance" ${currDept === 'finance' ? 'selected' : ''}>FINANCE</option>
+                <option value="sales" ${currDept === 'sales' ? 'selected' : ''}>SALES</option>
+                <option value="operations" ${currDept === 'operations' ? 'selected' : ''}>OPERATIONS</option>
+            </select>`;
+            
+        document.getElementById('modal-start-date').innerHTML = `<input type="date" class="form-input" style="padding: 4px 8px; font-size: 0.85rem;" id="edit-modal-start-date" value="${d.start_date || c.start_date || ''}">`;
+        document.getElementById('modal-email').innerHTML = `<input type="email" class="form-input" style="padding: 4px 8px; font-size: 0.85rem; width: 100%;" id="edit-modal-email" value="${(d.email || '').replace(/"/g, '&quot;')}">`;
+        document.getElementById('modal-phone').innerHTML = `<input type="tel" class="form-input" style="padding: 4px 8px; font-size: 0.85rem; width: 100%;" id="edit-modal-phone" value="${(d.phone || '').replace(/"/g, '&quot;')}">`;
+        document.getElementById('modal-pan').innerHTML = `<input type="text" class="form-input font-mono" style="padding: 4px 8px; font-size: 0.85rem; text-transform: uppercase; width: 100%;" id="edit-modal-pan" value="${(d.pan || '').replace(/"/g, '&quot;')}">`;
+        document.getElementById('modal-aadhaar').innerHTML = `<input type="text" class="form-input font-mono" style="padding: 4px 8px; font-size: 0.85rem; width: 100%;" id="edit-modal-aadhaar" value="${(d.aadhaar || '').replace(/"/g, '&quot;')}">`;
+        document.getElementById('modal-dob').innerHTML = `<input type="text" class="form-input" style="padding: 4px 8px; font-size: 0.85rem; width: 100%;" id="edit-modal-dob" value="${(d.dob || '').replace(/"/g, '&quot;')}" placeholder="YYYY-MM-DD">`;
+        document.getElementById('modal-address').innerHTML = `<textarea class="form-input" style="padding: 4px 8px; font-size: 0.85rem; width: 100%;" id="edit-modal-address" rows="2">${d.address || ''}</textarea>`;
+    }
+
+    function cancelModalEditMode() {
+        isModalEditMode = false;
+        document.getElementById('btn-modal-edit').classList.remove('hidden');
+        document.getElementById('btn-modal-save').classList.add('hidden');
+        document.getElementById('btn-modal-cancel').classList.add('hidden');
+        openFullProfileModal();
+    }
+
+    async function saveModalDetails() {
+        if (!currentCaseId) return;
+        run(async () => {
+            const patchData = {};
+            const fullName = document.getElementById('edit-modal-name')?.value.trim();
+            const dept = document.getElementById('edit-modal-dept')?.value.trim();
+            const startDate = document.getElementById('edit-modal-start-date')?.value.trim();
+            const email = document.getElementById('edit-modal-email')?.value.trim();
+            const phone = document.getElementById('edit-modal-phone')?.value.trim();
+            const pan = document.getElementById('edit-modal-pan')?.value.trim();
+            const aadhaar = document.getElementById('edit-modal-aadhaar')?.value.trim();
+            const dob = document.getElementById('edit-modal-dob')?.value.trim();
+            const address = document.getElementById('edit-modal-address')?.value.trim();
+
+            if (fullName !== undefined) patchData.full_name = fullName;
+            if (dept !== undefined) patchData.department = dept;
+            if (startDate !== undefined) patchData.start_date = startDate;
+            if (email !== undefined) patchData.email = email;
+            if (phone !== undefined) patchData.phone = phone;
+            if (pan !== undefined) patchData.pan = pan.toUpperCase();
+            if (aadhaar !== undefined) patchData.aadhaar = aadhaar;
+            if (dob !== undefined) patchData.dob = dob;
+            if (address !== undefined) patchData.address = address;
+
+            showToast("Pushing updates to employee record...", "info");
+            await api(`/api/cases/${currentCaseId}`, {
+                method: 'PATCH',
+                body: { data: patchData }
+            });
+
+            showToast("Employee record successfully updated & pushed!", "success");
+            addSystemMessage("✏️ Employee details updated & pushed to active record.");
+            cancelModalEditMode();
+            await refreshProfile();
+        });
+    }
+
     function closeFullProfileModal() {
+        if (isModalEditMode) cancelModalEditMode();
         document.getElementById('full-profile-modal').classList.add('hidden');
     }
 

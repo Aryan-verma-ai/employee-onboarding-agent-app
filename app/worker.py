@@ -31,8 +31,6 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
         try:
             service, case, document = authorized_document(case_id, document_id, db, principal)
             service.require_consent(case)
-            if case.status == "created":
-                raise ValueError("case_completed")
             content = reader(document)
             scan_status = document.scan_status
             if document.doc_type == "photograph":
@@ -52,7 +50,7 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
         if not job:
             return True  # Expired worker may not overwrite a newer attempt.
         service, case, document = authorized_document(case_id, document_id, db, principal)
-        if not case.consent_at or case.consent_withdrawn_at or case.status == "created":
+        if not case.consent_at or case.consent_withdrawn_at:
             job.status, job.error_code = "cancelled", "consent_or_case_closed"
             db.commit()
             return True
@@ -106,15 +104,26 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                         merged[field] = value
                 if merged != case.data:
                     case.data = merged
+                    if case.status == "created":
+                        import hashlib
+                        from sqlalchemy import select
+                        from .models import Employee
+
+                        emp = db.scalar(select(Employee).where(Employee.case_id == case.id))
+                        if emp:
+                            emp.data = dict(merged)
+                            if merged.get("pan"):
+                                emp.pan_fingerprint = hashlib.sha256(merged["pan"].strip().upper().encode()).hexdigest()
                     service.audit(
                         case_id,
                         "data.auto_merged",
                         {"fields": sorted(set(merged) - set(case.data))},
                     )
 
-            if case.status == "failed":
-                service.transition(case, "extracting")
-            service.transition(case, "needs-information")
+            if case.status != "created":
+                if case.status == "failed":
+                    service.transition(case, "extracting")
+                service.transition(case, "needs-information")
             service.audit(
                 case_id, "document.extracted", {"document_id": document_id, "attempt": job.attempts}
             )

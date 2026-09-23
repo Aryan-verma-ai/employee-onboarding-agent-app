@@ -151,11 +151,31 @@ def update_case(case_id: str, body: UpdateCase, svc=Depends(service)):
 
     case = svc.get_case(case_id)
     svc.require_consent(case)
-    case.validation_outcomes = []
-    if case.status == "created":
-        raise HTTPException(409, "Completed cases are immutable")
     if set(body.data) - set(ALLOWED_FIELDS) or any(len(value) > 500 for value in body.data.values()):
         raise HTTPException(422, "Unsupported field or excessive field length")
+
+    # If case is already completed, allow updating employee record over time
+    if case.status == "created":
+        import hashlib
+        from .models import Employee
+
+        if "department" in body.data and body.data["department"]:
+            dept = body.data["department"].strip().lower()
+            if dept in {"engineering", "hr", "finance", "sales", "operations"}:
+                case.department = dept
+        case.data = {**case.data, **body.data}
+        emp = svc.db.scalar(select(Employee).where(Employee.case_id == case.id))
+        if emp:
+            emp.data = dict(case.data)
+            if case.data.get("pan"):
+                emp.pan_fingerprint = hashlib.sha256(case.data["pan"].strip().upper().encode()).hexdigest()
+        svc.audit(
+            case.id,
+            "employee-record-updated",
+            {"fields": sorted(body.data)},
+        )
+        svc.db.commit()
+        return case_response(case)
     if body.reviewed_document_ids and not svc.principal.is_hr:
         raise HTTPException(403, "Only HR can attest document review")
     docs = []

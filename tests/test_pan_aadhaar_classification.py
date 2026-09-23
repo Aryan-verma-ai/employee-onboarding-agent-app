@@ -278,7 +278,7 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
         assert updated.data.get("has_photograph") is True
         assert updated.data.get("photograph_document_id") == res["id"]
 
-    # 2. Uploading a PDF on completed case should raise 409
+    # 2. Uploading a document (e.g. updated resume) on completed case is also permitted
     pdf_file = UploadFile(
         filename="resume.pdf",
         file=io.BytesIO(b"%PDF-1.4" + b"x" * 100),
@@ -286,9 +286,62 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
     )
     with Session(engine) as db:
         bg = BackgroundTasks()
-        with pytest.raises(HTTPException) as exc_info:
-            await auto_upload_and_extract(case_id, bg, pdf_file, db=db, principal=principal)
-        assert exc_info.value.status_code == 409
-        assert "finalized" in exc_info.value.detail.lower()
+        res_pdf = await auto_upload_and_extract(case_id, bg, pdf_file, db=db, principal=principal)
+        assert res_pdf["doc_type"] == "resume"
+
+    # 3. PATCHing every field on completed case should succeed and update Employee record
+    from app.main import update_case, UpdateCase
+    from app.service import OnboardingService
+    from app.models import Employee
+    from sqlalchemy import select
+    import hashlib
+
+    # First ensure Employee record exists
+    with Session(engine) as db:
+        emp = Employee(
+            id="EMP-123456",
+            case_id=case_id,
+            tenant_id="tenant-1",
+            data={"full_name": "Test Employee", "email": "test@gmail.com"},
+        )
+        db.add(emp)
+        db.commit()
+
+    all_fields_patch = {
+        "full_name": "Vikramaditya Sharma",
+        "email": "vikram.sharma@gmail.com",
+        "phone": "+919876543210",
+        "pan": "ABCDE1234F",
+        "aadhaar": "987654321098",
+        "dob": "1992-08-25",
+        "address": "456 Silicon Valley Boulevard, Bengaluru",
+        "start_date": "2026-11-01",
+        "department": "finance",
+    }
+    with Session(engine) as db:
+        svc = OnboardingService(db, principal)
+        body = UpdateCase(data=all_fields_patch)
+        updated_res = update_case(case_id, body, svc=svc)
+        assert updated_res["status"] == "created"
+        assert updated_res["department"] == "finance"
+        for k, v in all_fields_patch.items():
+            if k == "department":
+                continue
+            assert updated_res["data"][k] == v
+
+        # Check DB Case & Employee records
+        db_case = db.get(Case, case_id)
+        assert db_case.department == "finance"
+        assert db_case.data["full_name"] == "Vikramaditya Sharma"
+        assert db_case.data["address"] == "456 Silicon Valley Boulevard, Bengaluru"
+
+        db_emp = db.scalar(select(Employee).where(Employee.case_id == case_id))
+        assert db_emp is not None
+        assert db_emp.data["full_name"] == "Vikramaditya Sharma"
+        assert db_emp.data["email"] == "vikram.sharma@gmail.com"
+        assert db_emp.data["pan"] == "ABCDE1234F"
+        assert db_emp.data["address"] == "456 Silicon Valley Boulevard, Bengaluru"
+        assert db_emp.pan_fingerprint == hashlib.sha256(b"ABCDE1234F").hexdigest()
+
 
 

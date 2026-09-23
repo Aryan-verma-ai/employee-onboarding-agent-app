@@ -131,8 +131,9 @@ def test_http_review_validation_finalization(api):
     )
     assert second.status_code == 200
     assert first.json()["employee_id"] == second.json()["employee_id"]
-    assert first.json()["status"] == "created"
-    assert client.patch(f"/api/cases/{case_id}", json=payload).status_code == 409
+    patch_res = client.patch(f"/api/cases/{case_id}", json=payload)
+    assert patch_res.status_code == 200
+    assert patch_res.json()["data"]["email"] == payload["data"]["email"]
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(Employee)) == 1
 

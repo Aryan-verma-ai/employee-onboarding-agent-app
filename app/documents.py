@@ -150,12 +150,6 @@ async def upload_document(
     service = OnboardingService(db, principal)
     case = service.get_case(case_id)
     service.require_consent(case)
-    if case.status == "created" and doc_type != "photograph":
-        raise HTTPException(
-            409,
-            "This onboarding case is already finalized (Employee Created). "
-            "Only profile photographs can be added. To onboard another candidate, please start a new case."
-        )
     if doc_type not in DOC_TYPES:
         raise HTTPException(422, "Unsupported document category")
     content = await file.read(settings.max_upload_bytes + 1)
@@ -280,8 +274,6 @@ def extract(
     principal: Principal = Depends(get_principal),
 ):
     service, case, document = authorized_document(case_id, document_id, db, principal)
-    if case.status == "created" and document.doc_type != "photograph":
-        raise HTTPException(409, "Completed cases are immutable")
     service.require_consent(case)
     if document.doc_type == "photograph":
         document.extraction = {
@@ -296,7 +288,8 @@ def extract(
         return {"status": "complete", "document_id": document_id, "job_id": None}
     job = enqueue(db, principal, case, document)
     document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
-    service.transition(case, "extracting")
+    if case.status != "created":
+        service.transition(case, "extracting")
     service.audit(case_id, "document.extraction_queued", {"document_id": document_id, "job_id": job.id})
     db.commit()
     return {"status": job.status, "document_id": document_id, "job_id": job.id}
@@ -323,15 +316,6 @@ async def auto_upload_and_extract(
     ct_lower = (file.content_type or "").lower()
     is_image = ct_lower.startswith("image/")
     is_explicit_id = any(k in fn_lower for k in ("pan", "pancard", "aadhaar", "aadhar", "resume", "cv"))
-
-    if case.status == "created":
-        # Allow profile photograph uploads even after employee creation
-        if not is_image or is_explicit_id:
-            raise HTTPException(
-                409,
-                "This onboarding case is already finalized (Employee Created). "
-                "Only profile photographs can be added. To onboard another candidate, please start a new case."
-            )
 
     content = await file.read(settings.max_upload_bytes + 1)
     validate_upload(content, file.content_type)
@@ -432,9 +416,10 @@ async def auto_upload_and_extract(
     job = enqueue(db, principal, case, document)
     document.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
 
-    if case.status == "failed":
+    if case.status != "created":
+        if case.status == "failed":
+            service.transition(case, "extracting")
         service.transition(case, "extracting")
-    service.transition(case, "extracting")
     db.commit()
 
     # Trigger immediate extraction in background task
