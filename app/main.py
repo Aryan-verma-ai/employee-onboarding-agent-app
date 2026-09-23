@@ -24,6 +24,7 @@ async def lifespan(app):
     import os
     import threading
     import time
+
     from .auth import Principal
     from .worker import process_one
 
@@ -65,7 +66,8 @@ def case_response(case):
     start_date = (case.data or {}).get("start_date")
     onboarding_message = (
         f"Employee record created for {full_name}. Active with Employee ID {case.employee_id}, effective start date: {start_date}."
-        if case.employee_id else None
+        if case.employee_id
+        else None
     )
     return {
         "id": case.id,
@@ -103,6 +105,7 @@ def validate_case(case_id: str, svc=Depends(service)):
     case = svc.validate_case(case_id)
     if case.status == "created" or case.employee_id:
         from .notifications import send_welcome_email
+
         send_welcome_email(case.data, case.employee_id, case.department)
     return case_response(case)
 
@@ -113,6 +116,7 @@ def finalize_case(
 ):
     case = svc.finalize_case(case_id, body.confirmed, idempotency_key)
     from .notifications import send_welcome_email
+
     send_welcome_email(case.data, case.employee_id, case.department)
     return case_response(case)
 
@@ -122,6 +126,7 @@ def send_welcome_email_route(case_id: str, svc=Depends(service)):
     case = svc.get_case(case_id)
     svc.require_consent(case)
     from .notifications import send_welcome_email
+
     res = send_welcome_email(case.data, case.employee_id or "PENDING", case.department)
     svc.audit(case.id, "email.welcome_sent", res)
     svc.db.commit()
@@ -146,7 +151,7 @@ def update_case(case_id: str, body: UpdateCase, svc=Depends(service)):
     from sqlalchemy import select
 
     from .models import Document
-    from .validation import ALLOWED_FIELDS, REQUIRED_FIELDS
+    from .validation import ALLOWED_FIELDS
 
     case = svc.get_case(case_id)
     svc.require_consent(case)
@@ -156,6 +161,7 @@ def update_case(case_id: str, body: UpdateCase, svc=Depends(service)):
     # If case is already completed, allow updating employee record over time
     if case.status == "created":
         import hashlib
+
         from .models import Employee
 
         if "department" in body.data and body.data["department"]:
@@ -280,8 +286,10 @@ def export_employee_profile(case_id: str, svc=Depends(service)):
     value_font = Font(name="Calibri", size=11)
     label_fill = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
     thin_border = Border(
-        left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"), bottom=Side(style="thin"),
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
     )
 
     # ── Title Row ──
@@ -303,7 +311,10 @@ def export_employee_profile(case_id: str, svc=Depends(service)):
         ("Employee ID", case.employee_id or "Pending creation"),
         ("Case ID", case.id),
         ("Department", case.department.upper() if case.department else ""),
-        ("Onboarding Status", "Active / Created" if case.status == "created" else case.status.replace("-", " ").title()),
+        (
+            "Onboarding Status",
+            "Active / Created" if case.status == "created" else case.status.replace("-", " ").title(),
+        ),
         ("Start Working Date", data.get("start_date", "Pending finalization")),
         ("", ""),  # spacer
         ("Full Name", data.get("full_name", "")),

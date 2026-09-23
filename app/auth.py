@@ -62,4 +62,6 @@ def get_principal(
         shared_tenant = settings.entra_tenant_id or claims.get("tid", "demo-tenant")
         return Principal(claims.get("oid", claims.get("sub", "user")), shared_tenant, roles)
     except (jwt.PyJWTError, ValueError) as err:
-        raise HTTPException(401, f"Invalid access token: {err}", headers={"WWW-Authenticate": "Bearer"}) from None
+        raise HTTPException(
+            401, f"Invalid access token: {err}", headers={"WWW-Authenticate": "Bearer"}
+        ) from None

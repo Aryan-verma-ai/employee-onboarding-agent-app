@@ -98,7 +98,7 @@ TOOL_SCHEMAS = {
             "properties": {
                 "email": {
                     "type": "string",
-                    "description": "Recipient email address. Pass empty string \"\" to use candidate's registered email from onboarding documents."
+                    "description": 'Recipient email address. Pass empty string "" to use candidate\'s registered email from onboarding documents.',
                 }
             },
             "required": ["email"],
@@ -112,7 +112,7 @@ TOOL_SCHEMAS = {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Specific query regarding company policies, leaves, benefits, work hours, or onboarding procedures."
+                    "description": "Specific query regarding company policies, leaves, benefits, work hours, or onboarding procedures.",
                 }
             },
             "required": ["query"],
@@ -120,7 +120,32 @@ TOOL_SCHEMAS = {
         },
     },
 }
-TOOL_DESCRIPTIONS = {k: v["description"] for k, v in TOOL_SCHEMAS.items()}
+TOOL_DESCRIPTIONS = {
+    "get_onboarding_status": "Retrieve the current authorized onboarding case status and missing field names.",
+    "inspect_uploaded_documents": "Inspect metadata and processing state for documents already uploaded to the current case.",
+    "request_document_extraction": "Queue real backend extraction work for incomplete documents in the current case; extraction remains asynchronous.",
+    "build_employee_profile": "Build a non-PII profile readiness view from the authoritative case and document-validation state.",
+    "validate_onboarding": "Run deterministic backend validation on the current authorized onboarding case.",
+    "prepare_hr_confirmation": "Determine whether the authenticated HR finalization action may be presented; this never creates an employee.",
+}
+
+
+def execute_tool(service, case_id: str, name: str) -> dict:
+    """Dispatch only allowlisted, zero-argument Foundry tools to secure service operations."""
+    if name == "get_onboarding_status":
+        return safe_status(service.get_case(case_id))
+    if name == "inspect_uploaded_documents":
+        return service.document_workflow(case_id)
+    if name == "request_document_extraction":
+        return service.request_document_extraction(case_id)
+    if name == "build_employee_profile":
+        return service.profile_readiness(case_id)
+    if name == "validate_onboarding":
+        service.validate_case(case_id)
+        return safe_status(service.get_case(case_id))
+    if name == "prepare_hr_confirmation":
+        return service.confirmation_readiness(case_id)
+    raise ValueError("Tool not permitted")
 
 
 def tool_definitions():
@@ -164,7 +189,9 @@ def safe_status(case: Any) -> dict:
         next_action = None
 
     data = field("data", {}) or {}
-    email_sent_to = data.get("welcome_email_sent_to") or (data.get("email") if field("status") == "created" else None)
+    email_sent_to = data.get("welcome_email_sent_to") or (
+        data.get("email") if field("status") == "created" else None
+    )
     return {
         "status": field("status"),
         "missing_fields": [item for item in problems if not item.startswith(("conflict:", "extraction:"))],
@@ -344,33 +371,37 @@ class FoundryGateway:
             for call in calls:
                 try:
                     arguments = json.loads(call.arguments)
-                    if call.name not in TOOL_SCHEMAS:
-                        raise ValueError("Tool not permitted")
-                    if call.name == "validate_onboarding":
-                        service.validate_case(case_id)
-                        case = service.get_case(case_id)
-                        case_data = case.data if hasattr(case, "data") else (case.get("data", {}) if isinstance(case, dict) else {})
-                        emp_id = getattr(case, "employee_id", None) or (case.get("employee_id") if isinstance(case, dict) else None)
-                        dept = getattr(case, "department", None) or (case.get("department") if isinstance(case, dict) else None)
-                        from .notifications import send_welcome_email
-                        email_res = send_welcome_email(case_data, emp_id, dept)
-                        service.audit(case_id, "foundry.welcome_email", email_res)
-                        result = {
-                            **safe_status(case),
-                            "welcome_email": email_res,
-                        }
+                    if not isinstance(arguments, dict):
+                        raise ValueError("Tool or arguments not permitted")
+                    if call.name in TOOL_DESCRIPTIONS:
+                        if arguments != {}:
+                            raise ValueError("Tool or arguments not permitted")
+                        result = execute_tool(service, case_id, call.name)
+                    elif call.name == "get_extracted_data":
+                        if arguments != {}:
+                            raise ValueError("Tool or arguments not permitted")
+                        result = service.get_extracted_data(case_id)
                     elif call.name == "send_onboarding_welcome_email":
                         case = service.get_case(case_id)
-                        case_data = case.data if hasattr(case, "data") else (case.get("data", {}) if isinstance(case, dict) else {})
-                        emp_id = getattr(case, "employee_id", None) or (case.get("employee_id") if isinstance(case, dict) else None)
-                        dept = getattr(case, "department", None) or (case.get("department") if isinstance(case, dict) else None)
-                        recipient = arguments.get("email") if isinstance(arguments, dict) else None
+                        case_data = (
+                            case.data
+                            if hasattr(case, "data")
+                            else (case.get("data", {}) if isinstance(case, dict) else {})
+                        )
+                        emp_id = getattr(case, "employee_id", None) or (
+                            case.get("employee_id") if isinstance(case, dict) else None
+                        )
+                        dept = getattr(case, "department", None) or (
+                            case.get("department") if isinstance(case, dict) else None
+                        )
+                        recipient = arguments.get("email")
                         from .notifications import send_welcome_email
+
                         email_res = send_welcome_email(
                             case_data=case_data,
                             employee_id=emp_id or "PENDING",
                             department=dept,
-                            recipient_override=recipient
+                            recipient_override=recipient,
                         )
                         service.audit(case_id, "foundry.welcome_email", email_res)
                         result = {
@@ -379,15 +410,11 @@ class FoundryGateway:
                             "subject": email_res.get("subject"),
                             "message": email_res.get("preview"),
                         }
-                    elif call.name == "get_extracted_data":
-                        result = service.get_extracted_data(case_id)
-                    elif call.name == "get_onboarding_status":
-                        result = safe_status(service.get_case(case_id))
                     elif call.name == "search_company_knowledge":
-                        query = arguments.get("query", "") if isinstance(arguments, dict) else ""
+                        query = arguments.get("query", "")
                         result = search_company_knowledge(str(query))
                     else:
-                        result = safe_status(service.get_case(case_id))
+                        raise ValueError("Tool or arguments not permitted")
                     service.audit(case_id, "foundry.tool", {"tool": call.name, "call_id": call.call_id})
                 except (ValueError, json.JSONDecodeError):
                     service.audit(case_id, "foundry.tool_rejected", {"reason": "invalid-tool-or-arguments"})
@@ -466,8 +493,11 @@ def _chat(case_id, body, db, principal):
         raise
     except Exception as exc:
         import logging
+
         logging.getLogger(__name__).exception("Foundry chat failed for case %s: %s", case_id, exc)
-        service.audit(case_id, "foundry.failed", {"error_type": type(exc).__name__, "message": str(exc)[:300]})
+        service.audit(
+            case_id, "foundry.failed", {"error_type": type(exc).__name__, "message": str(exc)[:300]}
+        )
         db.commit()
         raise HTTPException(502, "Foundry agent unavailable; please retry") from exc
     finally:

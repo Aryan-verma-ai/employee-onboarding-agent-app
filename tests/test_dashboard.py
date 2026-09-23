@@ -70,6 +70,7 @@ def test_export_filters_and_tenant_isolation():
 
 def test_delete_case_and_clear_failed():
     from datetime import datetime, timezone
+
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
@@ -84,6 +85,7 @@ def test_delete_case_and_clear_failed():
 
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     from sqlalchemy import event
+
     @event.listens_for(engine, "connect")
     def do_connect(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
@@ -102,20 +104,59 @@ def test_delete_case_and_clear_failed():
     app.dependency_overrides[get_principal] = lambda: Principal("hr", "tenant-a", frozenset({"HR"}))
 
     with Session(engine) as db:
-        c1 = Case(id="case-to-delete", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="received")
-        c2 = Case(id="case-failed-1", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="failed")
-        c3 = Case(id="case-failed-2", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="failed")
+        c1 = Case(
+            id="case-to-delete",
+            tenant_id="tenant-a",
+            owner_id="owner",
+            department="hr",
+            consent_at=datetime.now(timezone.utc),
+            status="received",
+        )
+        c2 = Case(
+            id="case-failed-1",
+            tenant_id="tenant-a",
+            owner_id="owner",
+            department="hr",
+            consent_at=datetime.now(timezone.utc),
+            status="failed",
+        )
+        c3 = Case(
+            id="case-failed-2",
+            tenant_id="tenant-a",
+            owner_id="owner",
+            department="hr",
+            consent_at=datetime.now(timezone.utc),
+            status="failed",
+        )
         db.add_all([c1, c2, c3])
         db.commit()
 
-        d1 = Document(id="doc-1", case_id="case-to-delete", tenant_id="tenant-a", filename="p.pdf", content_type="application/pdf", storage_key="s1", sha256="0"*64)
-        d2 = Document(id="doc-2", case_id="case-failed-1", tenant_id="tenant-a", filename="q.pdf", content_type="application/pdf", storage_key="s2", sha256="1"*64)
+        d1 = Document(
+            id="doc-1",
+            case_id="case-to-delete",
+            tenant_id="tenant-a",
+            filename="p.pdf",
+            content_type="application/pdf",
+            storage_key="s1",
+            sha256="0" * 64,
+        )
+        d2 = Document(
+            id="doc-2",
+            case_id="case-failed-1",
+            tenant_id="tenant-a",
+            filename="q.pdf",
+            content_type="application/pdf",
+            storage_key="s2",
+            sha256="1" * 64,
+        )
         db.add_all([d1, d2])
         db.commit()
 
         j1 = ExtractionJob(id="job-1", tenant_id="tenant-a", case_id="case-to-delete", document_id="doc-1")
         j2 = ExtractionJob(id="job-2", tenant_id="tenant-a", case_id="case-failed-1", document_id="doc-2")
-        a1 = AuditEvent(id="aud-1", tenant_id="tenant-a", case_id="case-to-delete", actor_id="act", action="test")
+        a1 = AuditEvent(
+            id="aud-1", tenant_id="tenant-a", case_id="case-to-delete", actor_id="act", action="test"
+        )
         db.add_all([j1, a1, j2])
         db.commit()
 
@@ -138,5 +179,3 @@ def test_delete_case_and_clear_failed():
     # Verify no failed cases remain
     res_queue_after = client.get("/api/hr/cases")
     assert len(res_queue_after.json()) == 0
-
-

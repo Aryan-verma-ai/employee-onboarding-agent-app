@@ -1,7 +1,7 @@
 """Test verification that PAN and Aadhaar photos/scans are accurately classified and extracted."""
 
 import pytest
-from types import SimpleNamespace
+
 from app.extraction import classify_document
 
 
@@ -11,7 +11,9 @@ def test_classify_pan_from_candidates():
         {"field": "pan", "value": "ABCDE1234F", "confidence": 0.95},
         {"field": "full_name", "value": "Rahul Sharma", "confidence": 0.90},
     ]
-    doc_type = classify_document(candidates, filename="WhatsApp Image 2026-08-31 at 6.45.52 PM.jpeg", content_type="image/jpeg")
+    doc_type = classify_document(
+        candidates, filename="WhatsApp Image 2026-08-31 at 6.45.52 PM.jpeg", content_type="image/jpeg"
+    )
     assert doc_type == "pan", f"Expected 'pan', got '{doc_type}'"
 
 
@@ -46,18 +48,30 @@ def test_classify_true_photograph_only_when_no_text():
     candidates = []
     # Explicit photo filename
     assert classify_document(candidates, filename="headshot.jpg", content_type="image/jpeg") == "photograph"
-    assert classify_document(candidates, filename="candidate_photo.png", content_type="image/png") == "photograph"
-    assert classify_document(candidates, filename="profile_pic.jpeg", content_type="image/jpeg") == "photograph"
+    assert (
+        classify_document(candidates, filename="candidate_photo.png", content_type="image/png")
+        == "photograph"
+    )
+    assert (
+        classify_document(candidates, filename="profile_pic.jpeg", content_type="image/jpeg") == "photograph"
+    )
 
     # WhatsApp image with zero text candidates
-    assert classify_document(candidates, filename="WhatsApp Image 2026-08-31 at 6.45.52 PM.jpeg", content_type="image/jpeg") == "photograph"
+    assert (
+        classify_document(
+            candidates, filename="WhatsApp Image 2026-08-31 at 6.45.52 PM.jpeg", content_type="image/jpeg"
+        )
+        == "photograph"
+    )
 
 
 def test_classify_pan_filename_priority():
     # 5. Filename with 'pan' or 'aadhaar' is never treated as photograph
     candidates = []
     assert classify_document(candidates, filename="my_pancard_photo.jpg", content_type="image/jpeg") == "pan"
-    assert classify_document(candidates, filename="aadhaar_card_pic.png", content_type="image/png") == "aadhaar"
+    assert (
+        classify_document(candidates, filename="aadhaar_card_pic.png", content_type="image/png") == "aadhaar"
+    )
 
 
 def test_worker_pan_image_processes_and_merges(tmp_path):
@@ -65,8 +79,9 @@ def test_worker_pan_image_processes_and_merges(tmp_path):
     # auto-merges fields, and does not get confused with profile photograph
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
+
     from app.auth import Principal
-    from app.jobs import ExtractionJob, claim, enqueue
+    from app.jobs import enqueue
     from app.models import Base, Case, Document, utcnow
     from app.worker import process_one
 
@@ -94,7 +109,7 @@ def test_worker_pan_image_processes_and_merges(tmp_path):
             storage_key="test/key",
             sha256="1" * 64,
             scan_status="clean",
-            doc_type="other", # Initially uploaded as other
+            doc_type="other",  # Initially uploaded as other
         )
         db.add(doc)
         db.flush()
@@ -193,8 +208,9 @@ def test_clean_full_name():
 
 
 def test_aadhaar_ocr_extraction_filters_uidai_email_and_aadhaar_phone():
-    from app.extraction import candidates_from_result
     from types import SimpleNamespace as Obj
+
+    from app.extraction import candidates_from_result
 
     # Simulate OCR lines from real Aadhaar card back
     back_lines = [
@@ -232,13 +248,15 @@ def test_aadhaar_ocr_extraction_filters_uidai_email_and_aadhaar_phone():
 
 @pytest.mark.anyio
 async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
-    from app.models import Base, Case, utcnow
-    from app.auth import Principal
-    from app.documents import auto_upload_and_extract
-    from fastapi import UploadFile, HTTPException, BackgroundTasks
+    import io
+
+    from fastapi import BackgroundTasks, UploadFile
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-    import io
+
+    from app.auth import Principal
+    from app.documents import auto_upload_and_extract
+    from app.models import Base, Case, utcnow
 
     # Mock storage
     monkeypatch.setattr("app.documents.store_content", lambda key, content, content_type: "clean")
@@ -253,7 +271,7 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
             owner_id="hr-user",
             department="engineering",
             consent_at=utcnow(),
-            status="created", # Finalized case
+            status="created",  # Finalized case
             employee_id="EMP-123456",
             data={"full_name": "Test Employee", "email": "test@gmail.com"},
         )
@@ -290,11 +308,13 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
         assert res_pdf["doc_type"] == "resume"
 
     # 3. PATCHing every field on completed case should succeed and update Employee record
-    from app.main import update_case, UpdateCase
-    from app.service import OnboardingService
-    from app.models import Employee
-    from sqlalchemy import select
     import hashlib
+
+    from sqlalchemy import select
+
+    from app.main import UpdateCase, update_case
+    from app.models import Employee
+    from app.service import OnboardingService
 
     # First ensure Employee record exists
     with Session(engine) as db:
@@ -342,6 +362,3 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
         assert db_emp.data["pan"] == "ABCDE1234F"
         assert db_emp.data["address"] == "456 Silicon Valley Boulevard, Bengaluru"
         assert db_emp.pan_fingerprint == hashlib.sha256(b"ABCDE1234F").hexdigest()
-
-
-

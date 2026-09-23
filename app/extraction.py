@@ -55,7 +55,10 @@ def is_valid_candidate_email(email: str) -> bool:
     if not re.fullmatch(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", email):
         return False
     user, domain = email.split("@", 1)
-    if any(user == p or user.startswith(f"{p}.") or user.startswith(f"{p}-") or user.startswith(f"{p}_") for p in DISALLOWED_EMAIL_PREFIXES):
+    if any(
+        user == p or user.startswith(f"{p}.") or user.startswith(f"{p}-") or user.startswith(f"{p}_")
+        for p in DISALLOWED_EMAIL_PREFIXES
+    ):
         return False
     if domain.endswith(".gov.in") or "uidai" in domain or "incometax" in domain:
         return False
@@ -90,11 +93,23 @@ def clean_full_name(name: str) -> str:
         # Strip Devanagari and Gurmukhi characters when mixed with English
         name = re.sub(r"[\u0900-\u0D7F]", " ", name)
         bad_words = [
-            r"\bDOB\b", r"\bDate of Birth\b", r"\bMale\b", r"\bFemale\b",
-            r"\bJanam\b", r"\bMiti\b", r"\bNaram\b", r"\bBhidi\b",
-            r"\bC/O\b", r"\bS/O\b", r"\bD/O\b", r"\bW/O\b",
-            r"\bGovernment of India\b", r"\bUIDAI\b", r"\bEnrolment\b",
-            r"\bIssue Date\b", r"\bDownload Date\b",
+            r"\bDOB\b",
+            r"\bDate of Birth\b",
+            r"\bMale\b",
+            r"\bFemale\b",
+            r"\bJanam\b",
+            r"\bMiti\b",
+            r"\bNaram\b",
+            r"\bBhidi\b",
+            r"\bC/O\b",
+            r"\bS/O\b",
+            r"\bD/O\b",
+            r"\bW/O\b",
+            r"\bGovernment of India\b",
+            r"\bUIDAI\b",
+            r"\bEnrolment\b",
+            r"\bIssue Date\b",
+            r"\bDownload Date\b",
         ]
         for bw in bad_words:
             name = re.sub(bw, " ", name, flags=re.IGNORECASE)
@@ -113,8 +128,11 @@ def extract_with_llm(full_text: str, document_id: str) -> list[dict]:
         return []
     try:
         from openai import OpenAI
+
         base_url = endpoint.rstrip("/") + "/openai/v1/"
-        client = OpenAI(api_key=key, base_url=base_url, timeout=30.0, max_retries=1, default_headers={"api-key": key})
+        client = OpenAI(
+            api_key=key, base_url=base_url, timeout=30.0, max_retries=1, default_headers={"api-key": key}
+        )
 
         prompt = (
             "You are an expert Indian HR onboarding document parser specializing in Resumes, PAN Cards, and Aadhaar Cards.\n"
@@ -148,17 +166,25 @@ def extract_with_llm(full_text: str, document_id: str) -> list[dict]:
         resp = client.chat.completions.create(
             model=os.getenv("FOUNDRY_MODEL_DEPLOYMENT_NAME", "gpt-4.1-mini"),
             messages=[
-                {"role": "system", "content": "You extract structured onboarding entity data from documents into clean JSON."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You extract structured onboarding entity data from documents into clean JSON.",
+                },
+                {"role": "user", "content": prompt},
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
         )
         data = json.loads(resp.choices[0].message.content or "{}")
 
         candidates = []
         for field in ("full_name", "email", "phone", "pan", "aadhaar", "address", "dob"):
             val = data.get(field)
-            if val and isinstance(val, str) and val.strip() and val.lower() not in {"null", "none", "n/a", "unknown"}:
+            if (
+                val
+                and isinstance(val, str)
+                and val.strip()
+                and val.lower() not in {"null", "none", "n/a", "unknown"}
+            ):
                 val = val.strip()
                 if field == "aadhaar":
                     val = re.sub(r"[ -]", "", val)
@@ -174,17 +200,19 @@ def extract_with_llm(full_text: str, document_id: str) -> list[dict]:
                     val = clean_full_name(val)
                     if not val:
                         continue
-                candidates.append({
-                    "field": field,
-                    "value": val,
-                    "confidence": 0.98,
-                    "document_id": document_id,
-                    "page": 1,
-                    "line_offset": 0,
-                    "method": "llm-structured-extraction",
-                    "source": "azure-openai",
-                    "doc_type_hint": data.get("doc_type")
-                })
+                candidates.append(
+                    {
+                        "field": field,
+                        "value": val,
+                        "confidence": 0.98,
+                        "document_id": document_id,
+                        "page": 1,
+                        "line_offset": 0,
+                        "method": "llm-structured-extraction",
+                        "source": "azure-openai",
+                        "doc_type_hint": data.get("doc_type"),
+                    }
+                )
         return candidates
     except Exception as exc:
         logging.getLogger(__name__).warning("LLM extraction failed: %s", exc)
@@ -214,7 +242,8 @@ def candidates_from_result(result, document_id: str) -> dict:
                 word
                 for word in getattr(page, "words", []) or []
                 if any(
-                    span.offset <= word.span.offset < span.offset + span.length for span in getattr(line, "spans", []) or []
+                    span.offset <= word.span.offset < span.offset + span.length
+                    for span in getattr(line, "spans", []) or []
                 )
             ]
             confidence = min((word.confidence for word in words), default=0.0)
@@ -224,7 +253,11 @@ def candidates_from_result(result, document_id: str) -> dict:
                     if "download" in line_lower or "issue" in line_lower:
                         continue
                 for match in re.finditer(pattern, line.content):
-                    raw_val = match.group(1) if (match.lastindex and field in {"full_name", "phone"}) else match.group(0)
+                    raw_val = (
+                        match.group(1)
+                        if (match.lastindex and field in {"full_name", "phone"})
+                        else match.group(0)
+                    )
                     value = raw_val.strip()
                     if field == "phone":
                         value = re.sub(r"[ ()-]", "", value)
@@ -348,7 +381,10 @@ def classify_document(candidates: list[dict], filename: str = "", content_type: 
         return "resume"
 
     # 4. Only classify as photograph if filename explicitly indicates a profile headshot/avatar
-    if any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "avatar", "profile_photo")):
+    if any(
+        k in fn_lower
+        for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "avatar", "profile_photo")
+    ):
         return "photograph"
 
     # 5. Image file with zero text candidates (i.e. pure photo with no document text)

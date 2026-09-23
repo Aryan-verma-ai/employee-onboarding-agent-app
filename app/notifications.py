@@ -10,7 +10,9 @@ from email.mime.text import MIMEText
 logger = logging.getLogger("onboarding.notifications")
 
 
-def format_welcome_email(full_name: str, employee_id: str, department: str, start_date: str, email: str, phone: str = "") -> tuple[str, str, str]:
+def format_welcome_email(
+    full_name: str, employee_id: str, department: str, start_date: str, email: str, phone: str = ""
+) -> tuple[str, str, str]:
     """Return (subject, text_content, html_content) for the onboarding congratulations email."""
     name = full_name or "New Team Member"
     dept_str = (department or "General").upper()
@@ -103,7 +105,7 @@ Azure AI Foundry Onboarding Portal
           <td style="padding: 10px 0; font-weight: 600; color: #64748b;">Registered Email:</td>
           <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0f172a;">{email}</td>
         </tr>
-        {f'<tr><td style="padding: 10px 0; font-weight: 600; color: #64748b;">Phone Number:</td><td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0f172a;">{phone}</td></tr>' if phone else ''}
+        {f'<tr><td style="padding: 10px 0; font-weight: 600; color: #64748b;">Phone Number:</td><td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0f172a;">{phone}</td></tr>' if phone else ""}
       </table>
     </div>
 
@@ -128,10 +130,7 @@ Azure AI Foundry Onboarding Portal
 
 
 def send_welcome_email(
-    case_data: dict,
-    employee_id: str,
-    department: str,
-    override_recipient: str | None = None
+    case_data: dict, employee_id: str, department: str, override_recipient: str | None = None
 ) -> dict:
     """Dispatches the onboarding welcome email to the candidate's email address."""
     recipient = (override_recipient or case_data.get("email") or "").strip()
@@ -139,7 +138,7 @@ def send_welcome_email(
         return {
             "status": "failed",
             "reason": "no_recipient_email",
-            "message": "Candidate does not have an email address recorded in onboarding data."
+            "message": "Candidate does not have an email address recorded in onboarding data.",
         }
 
     full_name = case_data.get("full_name") or "Employee"
@@ -152,10 +151,9 @@ def send_welcome_email(
         department=department,
         start_date=start_date,
         email=recipient,
-        phone=phone
+        phone=phone,
     )
 
-    sent = False
     delivery_channel = "recorded_dispatch"
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -177,14 +175,15 @@ def send_welcome_email(
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
                 server.sendmail(from_email, [recipient], msg.as_string())
-            sent = True
             delivery_channel = "smtp"
             logger.info("Welcome email sent via SMTP to %s", recipient)
         except Exception as exc:
             logger.warning("SMTP email dispatch failed: %s; falling back to recorded dispatch", exc)
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    logger.info("Welcome email recorded for %s with ID %s (channel: %s)", recipient, employee_id, delivery_channel)
+    logger.info(
+        "Welcome email recorded for %s with ID %s (channel: %s)", recipient, employee_id, delivery_channel
+    )
 
     return {
         "status": "sent",
@@ -196,5 +195,5 @@ def send_welcome_email(
         "start_date": start_date,
         "subject": subject,
         "timestamp": now_iso,
-        "preview": f"🎉 Congratulations email dispatched to {recipient} with Employee ID {employee_id} and start date {start_date}."
+        "preview": f"🎉 Congratulations email dispatched to {recipient} with Employee ID {employee_id} and start date {start_date}.",
     }

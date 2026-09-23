@@ -263,6 +263,3 @@ def clear_failed_cases(
         db.rollback()
         logger.exception("Failed to clear failed cases: %s", err)
         raise HTTPException(500, f"Failed to clear failed cases: {err}")
-
-
-

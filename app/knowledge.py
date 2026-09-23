@@ -1,6 +1,5 @@
 """Company knowledge base and RAG retrieval pipeline for employee onboarding."""
 
-import os
 import re
 from typing import Any
 
@@ -21,7 +20,20 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "Automated OCR extracts your Name, Email, Phone, PAN number, and Aadhaar number upon upload.\n"
             "Once documents are uploaded and verified, HR conducts a final review to create your employee profile."
         ),
-        "keywords": ["documents", "pan", "aadhaar", "resume", "photo", "photograph", "bank", "cheque", "upload", "id proof", "address proof", "verification"]
+        "keywords": [
+            "documents",
+            "pan",
+            "aadhaar",
+            "resume",
+            "photo",
+            "photograph",
+            "bank",
+            "cheque",
+            "upload",
+            "id proof",
+            "address proof",
+            "verification",
+        ],
     },
     {
         "id": "onboarding_workflow",
@@ -35,7 +47,16 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "Phase 4 - HR Attestation & Finalization: An authorized HR representative verifies the submitted data, confirms accuracy, and generates the unique Employee ID.\n"
             "Timeline: The entire document submission process should be completed within 3 business days of joining."
         ),
-        "keywords": ["process", "workflow", "steps", "timeline", "phases", "how to onboard", "joining", "new hire"]
+        "keywords": [
+            "process",
+            "workflow",
+            "steps",
+            "timeline",
+            "phases",
+            "how to onboard",
+            "joining",
+            "new hire",
+        ],
     },
     {
         "id": "work_hours",
@@ -48,7 +69,18 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "Remote Work Guidelines: High-speed internet connection (minimum 50 Mbps), quiet workspace, and adherence to security policies.\n"
             "Attendance Logging: Log into the HR employee portal daily by 9:30 AM to mark attendance."
         ),
-        "keywords": ["hours", "timings", "work hours", "shift", "remote", "work from home", "wfh", "hybrid", "attendance", "office days"]
+        "keywords": [
+            "hours",
+            "timings",
+            "work hours",
+            "shift",
+            "remote",
+            "work from home",
+            "wfh",
+            "hybrid",
+            "attendance",
+            "office days",
+        ],
     },
     {
         "id": "leave_policy",
@@ -64,7 +96,18 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "6. Public Holidays: 10 fixed company holidays per year, published annually in December.\n"
             "Leave Application: Must be applied through the HRMS portal at least 48 hours in advance for planned leaves."
         ),
-        "keywords": ["leave", "leaves", "vacation", "holiday", "holidays", "sick leave", "casual leave", "maternity", "paternity", "time off"]
+        "keywords": [
+            "leave",
+            "leaves",
+            "vacation",
+            "holiday",
+            "holidays",
+            "sick leave",
+            "casual leave",
+            "maternity",
+            "paternity",
+            "time off",
+        ],
     },
     {
         "id": "payroll_benefits",
@@ -79,7 +122,19 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "5. Annual Wellness Checkup: Complimentary annual executive health checkup at partner diagnostics.\n"
             "6. Learning & Development Allowance: Annual stipend of ₹25,000 for relevant certifications, books, and courses."
         ),
-        "keywords": ["salary", "payroll", "pay", "pf", "provident fund", "insurance", "mediclaim", "benefits", "health insurance", "allowance", "ctc"]
+        "keywords": [
+            "salary",
+            "payroll",
+            "pay",
+            "pf",
+            "provident fund",
+            "insurance",
+            "mediclaim",
+            "benefits",
+            "health insurance",
+            "allowance",
+            "ctc",
+        ],
     },
     {
         "id": "it_security",
@@ -94,7 +149,19 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "5. Data Protection: Customer and company data must never be stored on personal drives or unapproved cloud services.\n"
             "6. Reporting Incidents: Immediately notify security@company.com of any suspected phishing or security breach."
         ),
-        "keywords": ["laptop", "it", "computer", "macbook", "vpn", "mfa", "password", "security", "data", "confidentiality", "software"]
+        "keywords": [
+            "laptop",
+            "it",
+            "computer",
+            "macbook",
+            "vpn",
+            "mfa",
+            "password",
+            "security",
+            "data",
+            "confidentiality",
+            "software",
+        ],
     },
     {
         "id": "code_of_conduct",
@@ -108,7 +175,18 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "4. Whistleblower Mechanism: Anonymous grievance reporting channel available at ethics@company.com.\n"
             "5. Probation Period: Standard probation period is 3 months, extendable by up to 3 additional months based on performance."
         ),
-        "keywords": ["conduct", "ethics", "posh", "harassment", "discrimination", "probation", "rules", "complaint", "grievance", "moonlighting"]
+        "keywords": [
+            "conduct",
+            "ethics",
+            "posh",
+            "harassment",
+            "discrimination",
+            "probation",
+            "rules",
+            "complaint",
+            "grievance",
+            "moonlighting",
+        ],
     },
     {
         "id": "departments",
@@ -122,22 +200,99 @@ COMPANY_KNOWLEDGE: list[dict[str, Any]] = [
             "4. Sales: Drives client acquisition, enterprise partnerships, and revenue growth.\n"
             "5. Operations: Manages IT systems, office facilities, procurement, and vendor relations."
         ),
-        "keywords": ["department", "departments", "engineering", "hr", "finance", "sales", "operations", "teams", "structure"]
-    }
+        "keywords": [
+            "department",
+            "departments",
+            "engineering",
+            "hr",
+            "finance",
+            "sales",
+            "operations",
+            "teams",
+            "structure",
+        ],
+    },
 ]
 
 # Keywords that indicate the query is within company / onboarding domain
 DOMAIN_KEYWORDS = {
-    "onboard", "onboarding", "document", "documents", "pan", "aadhaar", "resume",
-    "cv", "photo", "photograph", "upload", "status", "verify", "verification",
-    "validate", "validation", "company", "policy", "policies", "leave", "leaves",
-    "vacation", "holiday", "holidays", "work", "hours", "timing", "timings", "shift",
-    "remote", "wfh", "hybrid", "office", "salary", "pay", "payroll", "benefit",
-    "benefits", "insurance", "mediclaim", "pf", "provident", "fund", "it", "laptop",
-    "vpn", "mfa", "security", "conduct", "ethics", "posh", "probation", "department",
-    "engineering", "finance", "sales", "operations", "hr", "cheque", "bank", "offer",
-    "employee", "hire", "joining", "id", "profile", "allowance", "sick", "casual",
-    "maternity", "paternity", "dress", "code", "attendance", "portal", "exit", "notice"
+    "onboard",
+    "onboarding",
+    "document",
+    "documents",
+    "pan",
+    "aadhaar",
+    "resume",
+    "cv",
+    "photo",
+    "photograph",
+    "upload",
+    "status",
+    "verify",
+    "verification",
+    "validate",
+    "validation",
+    "company",
+    "policy",
+    "policies",
+    "leave",
+    "leaves",
+    "vacation",
+    "holiday",
+    "holidays",
+    "work",
+    "hours",
+    "timing",
+    "timings",
+    "shift",
+    "remote",
+    "wfh",
+    "hybrid",
+    "office",
+    "salary",
+    "pay",
+    "payroll",
+    "benefit",
+    "benefits",
+    "insurance",
+    "mediclaim",
+    "pf",
+    "provident",
+    "fund",
+    "it",
+    "laptop",
+    "vpn",
+    "mfa",
+    "security",
+    "conduct",
+    "ethics",
+    "posh",
+    "probation",
+    "department",
+    "engineering",
+    "finance",
+    "sales",
+    "operations",
+    "hr",
+    "cheque",
+    "bank",
+    "offer",
+    "employee",
+    "hire",
+    "joining",
+    "id",
+    "profile",
+    "allowance",
+    "sick",
+    "casual",
+    "maternity",
+    "paternity",
+    "dress",
+    "code",
+    "attendance",
+    "portal",
+    "exit",
+    "notice",
 }
 
 
@@ -159,7 +314,7 @@ def search_company_knowledge(query: str, top_k: int = 3) -> dict[str, Any]:
         return {
             "found": False,
             "results": [],
-            "message": "Please provide a specific query regarding company policies or onboarding."
+            "message": "Please provide a specific query regarding company policies or onboarding.",
         }
 
     q_clean = query.lower()
@@ -196,17 +351,13 @@ def search_company_knowledge(query: str, top_k: int = 3) -> dict[str, Any]:
         return {
             "found": False,
             "results": [],
-            "message": "No specific company policy found matching your query. Please contact HR for further details."
+            "message": "No specific company policy found matching your query. Please contact HR for further details.",
         }
 
     return {
         "found": True,
         "results": [
-            {
-                "title": doc["title"],
-                "category": doc["category"],
-                "content": doc["content"]
-            }
+            {"title": doc["title"], "category": doc["category"], "content": doc["content"]}
             for score, doc in top_matches
-        ]
+        ],
     }

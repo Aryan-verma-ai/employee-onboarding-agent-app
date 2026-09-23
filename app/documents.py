@@ -110,7 +110,9 @@ def list_documents(
     # Auto-complete photograph documents (photographs do not require OCR)
     changed = False
     for doc in docs:
-        if doc.doc_type == "photograph" and (not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}):
+        if doc.doc_type == "photograph" and (
+            not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}
+        ):
             doc.doc_type = "photograph"
             doc.extraction = {
                 "status": "complete",
@@ -173,7 +175,7 @@ async def upload_document(
     document_id = str(uuid4())
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{document_id}"
     scan_status = store_content(key, content, file.content_type)
-    
+
     if doc_type == "photograph":
         extraction_data = {
             "status": "complete",
@@ -315,18 +317,20 @@ async def auto_upload_and_extract(
     fn_lower = (file.filename or "").lower()
     ct_lower = (file.content_type or "").lower()
     is_image = ct_lower.startswith("image/")
-    is_explicit_id = any(k in fn_lower for k in ("pan", "pancard", "aadhaar", "aadhar", "resume", "cv"))
 
     content = await file.read(settings.max_upload_bytes + 1)
     validate_upload(content, file.content_type)
     digest = hashlib.sha256(content).hexdigest()
 
     # Check for duplicate by sha256 (regardless of doc_type since we don't know it yet)
-    existing = db.scalar(
-        select(Document).where(Document.case_id == case_id, Document.sha256 == digest)
-    )
+    existing = db.scalar(select(Document).where(Document.case_id == case_id, Document.sha256 == digest))
     if existing:
-        return {"id": existing.id, "version": existing.version, "doc_type": existing.doc_type, "duplicate": True}
+        return {
+            "id": existing.id,
+            "version": existing.version,
+            "doc_type": existing.doc_type,
+            "duplicate": True,
+        }
 
     # Initial type hint
     if any(k in fn_lower for k in ("pan", "pancard")):
@@ -335,7 +339,10 @@ async def auto_upload_and_extract(
         doc_type = "aadhaar"
     elif any(k in fn_lower for k in ("resume", "cv")):
         doc_type = "resume"
-    elif any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")) or (case.status == "created" and is_image):
+    elif any(
+        k in fn_lower
+        for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")
+    ) or (case.status == "created" and is_image):
         doc_type = "photograph"
     else:
         doc_type = "other"
@@ -425,6 +432,7 @@ async def auto_upload_and_extract(
     # Trigger immediate extraction in background task
     from .db import engine
     from .worker import process_one
+
     background_tasks.add_task(process_one, engine, principal)
 
     return {

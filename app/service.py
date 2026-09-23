@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from hashlib import sha256
-from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -129,8 +128,7 @@ class OnboardingService:
         return list(dict.fromkeys(errors))
 
     def validate_case(self, case_id):
-        import secrets
-        from datetime import datetime, timedelta, timezone
+
         from .validation import rule_outcomes
 
         case = self.get_case(case_id)
@@ -140,9 +138,7 @@ class OnboardingService:
 
         # Auto-attest completed documents so review check passes smoothly
         docs = self.db.scalars(
-            select(Document).where(
-                Document.case_id == case.id, Document.tenant_id == case.tenant_id
-            )
+            select(Document).where(Document.case_id == case.id, Document.tenant_id == case.tenant_id)
         ).all()
         for doc in docs:
             if doc.extraction.get("status") == "complete" and not doc.extraction.get("reviewed"):
@@ -153,34 +149,7 @@ class OnboardingService:
         case.validation_outcomes = rule_outcomes(case.missing_fields)
         self.audit(case.id, "validation-completed", {"failed_rules": case.missing_fields})
 
-        if not case.missing_fields:
-            self.transition(case, "validated")
-            if not case.employee_id:
-                employee_id = f"{settings.employee_id_prefix}-{secrets.randbelow(900000) + 100000}"
-                today = datetime.now(timezone.utc)
-                days_ahead = 14 + (0 - today.weekday()) % 7
-                if days_ahead < 7:
-                    days_ahead += 7
-                start_date = (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
-                case.data = {**case.data, "start_date": start_date}
-                case.employee_id = employee_id
-                emp = self.db.scalar(select(Employee).where(Employee.case_id == case.id))
-                if not emp:
-                    self.db.add(
-                        Employee(
-                            id=employee_id,
-                            case_id=case.id,
-                            tenant_id=case.tenant_id,
-                            data=case.data,
-                            pan_fingerprint=sha256(case.data["pan"].strip().upper().encode()).hexdigest()
-                            if case.data.get("pan")
-                            else None,
-                        )
-                    )
-            self.transition(case, "created")
-            self.audit(case.id, "employee-created", {"employee_id": case.employee_id, "start_date": case.data.get("start_date")})
-        else:
-            self.transition(case, "needs-information")
+        self.transition(case, "needs-information" if case.missing_fields else "validated")
         self.db.commit()
         return case
 
@@ -194,9 +163,7 @@ class OnboardingService:
         case = self.get_case(case_id)
         self.require_consent(case)
         documents = self.db.scalars(
-            select(Document).where(
-                Document.case_id == case.id, Document.tenant_id == case.tenant_id
-            )
+            select(Document).where(Document.case_id == case.id, Document.tenant_id == case.tenant_id)
         ).all()
 
         # Which fields are populated in case.data?
@@ -239,7 +206,8 @@ class OnboardingService:
         start_date = case.data.get("start_date")
         onboarding_msg = (
             f"Employee record created for {full_name}. Active with Employee ID {case.employee_id}, effective start date: {start_date}."
-            if case.employee_id else None
+            if case.employee_id
+            else None
         )
 
         return {
@@ -311,7 +279,11 @@ class OnboardingService:
             )
         )
         self.transition(case, "created")
-        self.audit(case.id, "employee-created", {"employee_id": employee_id, "start_date": case.data.get("start_date")})
+        self.audit(
+            case.id,
+            "employee-created",
+            {"employee_id": employee_id, "start_date": case.data.get("start_date")},
+        )
         try:
             self.db.commit()
         except IntegrityError:

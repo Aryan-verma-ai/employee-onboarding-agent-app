@@ -34,7 +34,12 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             content = reader(document)
             scan_status = document.scan_status
             if document.doc_type == "photograph":
-                result = {"candidates": [], "accepted": {}, "review_fields": [], "notes": "Photograph verified"}
+                result = {
+                    "candidates": [],
+                    "accepted": {},
+                    "review_fields": [],
+                    "notes": "Photograph verified",
+                }
             else:
                 db.rollback()  # Do not hold a transaction across the cloud call.
                 result = extractor(content, document_id)
@@ -76,7 +81,9 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             from .extraction import classify_document
 
             candidates = result.get("candidates", [])
-            detected_type = classify_document(candidates, filename=document.filename, content_type=document.content_type)
+            detected_type = classify_document(
+                candidates, filename=document.filename, content_type=document.content_type
+            )
             if detected_type != "other" or document.doc_type == "other":
                 document.doc_type = detected_type
                 service.audit(
@@ -106,14 +113,18 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
                     case.data = merged
                     if case.status == "created":
                         import hashlib
+
                         from sqlalchemy import select
+
                         from .models import Employee
 
                         emp = db.scalar(select(Employee).where(Employee.case_id == case.id))
                         if emp:
                             emp.data = dict(merged)
                             if merged.get("pan"):
-                                emp.pan_fingerprint = hashlib.sha256(merged["pan"].strip().upper().encode()).hexdigest()
+                                emp.pan_fingerprint = hashlib.sha256(
+                                    merged["pan"].strip().upper().encode()
+                                ).hexdigest()
                     service.audit(
                         case_id,
                         "data.auto_merged",
@@ -162,14 +173,13 @@ def _try_auto_extract_photo(db, principal, service, case, document):
         )
     )
     if existing_photo:
-        logging.getLogger(__name__).debug(
-            "Photo already exists for case %s — skipping auto-extract", case_id
-        )
+        logging.getLogger(__name__).debug("Photo already exists for case %s — skipping auto-extract", case_id)
         return
 
     # Read document content
     try:
         from .documents import read_clean_content
+
         content = read_clean_content(document)
     except Exception as exc:
         logging.getLogger(__name__).warning(
@@ -189,9 +199,7 @@ def _try_auto_extract_photo(db, principal, service, case, document):
     digest = hashlib.sha256(photo_bytes).hexdigest()
 
     # Don't store duplicate by sha256
-    dup = db.scalar(
-        select(DocModel).where(DocModel.case_id == case_id, DocModel.sha256 == digest)
-    )
+    dup = db.scalar(select(DocModel).where(DocModel.case_id == case_id, DocModel.sha256 == digest))
     if dup:
         return
 
@@ -200,6 +208,7 @@ def _try_auto_extract_photo(db, principal, service, case, document):
     key = f"{hashlib.sha256(principal.tenant_id.encode()).hexdigest()}/{case_id}/{photo_id}"
 
     from .documents import store_content
+
     scan_status = store_content(key, photo_bytes, photo_content_type)
 
     photo_doc = DocModel(
@@ -265,4 +274,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

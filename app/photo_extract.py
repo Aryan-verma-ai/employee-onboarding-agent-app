@@ -26,7 +26,6 @@ def _is_portrait_ratio(w: int, h: int) -> bool:
 def _has_skin_tones(img, threshold: float = 0.08) -> bool:
     """Rough check whether image contains enough skin-tone-ish pixels (works across skin colours)."""
     try:
-        from PIL import Image
         small = img.resize((80, 80)).convert("RGB")
         pixels = list(small.getdata())
         skin_count = 0
@@ -47,7 +46,6 @@ def _find_face_region_from_image(img) -> Optional[tuple]:
     right side, taking up about 25-35% of the card width.
     We try candidate regions and pick the one with the most skin-tone pixels.
     """
-    from PIL import Image
 
     w, h = img.size
 
@@ -83,8 +81,7 @@ def _find_face_region_from_image(img) -> Optional[tuple]:
         small = region.resize((60, 60)).convert("RGB")
         pixels = list(small.getdata())
         skin_count = sum(
-            1 for r, g, b in pixels
-            if r > 60 and g > 40 and b > 20 and abs(r - g) < 80 and r > b
+            1 for r, g, b in pixels if r > 60 and g > 40 and b > 20 and abs(r - g) < 80 and r > b
         )
         score = skin_count / len(pixels)
         if score > best_score and score > 0.05:
@@ -128,9 +125,7 @@ def extract_photo_from_id_card(content: bytes) -> Optional[tuple[bytes, str]]:
         fw, fh = face_crop.size
         if fw > max_dim or fh > max_dim:
             scale = max_dim / max(fw, fh)
-            face_crop = face_crop.resize(
-                (int(fw * scale), int(fh * scale)), Image.LANCZOS
-            )
+            face_crop = face_crop.resize((int(fw * scale), int(fh * scale)), Image.LANCZOS)
 
         # Validate the crop has reasonable content (not blank/white)
         if not _has_skin_tones(face_crop, threshold=0.03):
@@ -213,6 +208,7 @@ def extract_photo_from_pdf(content: bytes) -> Optional[tuple[bytes, str]]:
 
                     # Validate skin tones
                     from PIL import Image as PILImage
+
                     pil_img = PILImage.open(io.BytesIO(img_bytes))
                     if _has_skin_tones(pil_img, threshold=0.03):
                         score += 25
@@ -230,14 +226,13 @@ def extract_photo_from_pdf(content: bytes) -> Optional[tuple[bytes, str]]:
         if best_image and best_score >= 50:
             # Resize if too large
             from PIL import Image as PILImage
+
             pil_img = PILImage.open(io.BytesIO(best_image))
             max_dim = 400
             w, h = pil_img.size
             if w > max_dim or h > max_dim:
                 scale = max_dim / max(w, h)
-                pil_img = pil_img.resize(
-                    (int(w * scale), int(h * scale)), PILImage.LANCZOS
-                )
+                pil_img = pil_img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
                 buf = io.BytesIO()
                 pil_img.save(buf, format="JPEG", quality=90)
                 best_image = buf.getvalue()
