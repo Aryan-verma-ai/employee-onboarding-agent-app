@@ -183,6 +183,7 @@
             <button id="btn-create-employee" class="btn-success hidden" onclick="finalizeCase()">Create Employee</button>
             <button id="btn-download-confirmation" class="btn-secondary hidden" onclick="downloadConfirmation()">Download Confirmation</button>
             <button id="btn-withdraw-consent" class="btn-danger" onclick="withdrawConsent()" style="margin-top: 10px;">Withdraw Consent</button>
+            <button id="btn-delete-case" onclick="deleteCurrentCase()" style="background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-weight: 600; margin-top: 8px; width: 100%;">🗑️ Delete Case</button>
         </div>
     </div>
 
@@ -211,6 +212,7 @@
             <button onclick="loadHrQueue()" class="btn-secondary">Refresh</button>
             <button onclick="exportQueue('csv')" class="btn-secondary">Export CSV</button>
             <button onclick="exportQueue('xlsx')" class="btn-secondary">Export XLSX</button>
+            <button onclick="clearFailedCases()" class="btn-secondary" style="background: #fff0f0; color: #d32f2f; border: 1px solid #ffcdd2;">🧹 Clear Failed</button>
         </div>
     </div>
     <div style="overflow-x: auto;">
@@ -1036,10 +1038,41 @@ Human Resources & Employee Onboarding Team`;
                     <td>${name}</td>
                     <td>${c.department || '—'}</td>
                     <td>${created}</td>
-                    <td><button class="btn-secondary" onclick="resumeCase('${id}')">Review</button></td>
+                    <td>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn-secondary" onclick="resumeCase('${id}')">Review</button>
+                            <button onclick="deleteCase('${id}')" style="padding: 4px 8px; font-size: 0.8em; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer; font-weight: 600;">🗑️ Delete</button>
+                        </div>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
+        });
+    }
+
+    async function deleteCase(id) {
+        const shortId = id.length > 8 ? id.substring(0, 8) + '...' : id;
+        if (!confirm(`Are you sure you want to delete case ${shortId}? This will permanently remove all associated records.`)) return;
+        run(async () => {
+            await api(`/api/cases/${id}`, { method: 'DELETE' });
+            if (currentCaseId === id) {
+                closeWorkspace();
+            }
+            await loadHrQueue();
+        });
+    }
+
+    async function deleteCurrentCase() {
+        if (!currentCaseId) return;
+        await deleteCase(currentCaseId);
+    }
+
+    async function clearFailedCases() {
+        if (!confirm("Are you sure you want to delete all failed cases from the queue?")) return;
+        run(async () => {
+            const res = await api('/api/hr/cases/clear-failed', { method: 'POST' });
+            alert(`Successfully cleared ${res.deleted_count || 0} failed cases.`);
+            await loadHrQueue();
         });
     }
 

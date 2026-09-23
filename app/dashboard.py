@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .auth import Principal, get_principal
 from .db import get_db
-from .models import AuditEvent, Case, Document
+from .models import AuditEvent, Case, Document, Employee, Idempotency
 from .service import OnboardingService
 
 router = APIRouter(tags=["hr"])
@@ -180,3 +180,52 @@ def export_cases(
             "Cache-Control": "no-store",
         },
     )
+
+
+@router.delete("/api/cases/{case_id}")
+@router.delete("/api/hr/cases/{case_id}")
+def delete_case(
+    case_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(hr_principal),
+):
+    case = db.scalar(select(Case).where(Case.id == case_id))
+    if not case:
+        raise HTTPException(404, "Case not found")
+
+    # Delete foreign key references
+    for doc in db.scalars(select(Document).where(Document.case_id == case.id)).all():
+        db.delete(doc)
+    for emp in db.scalars(select(Employee).where(Employee.case_id == case.id)).all():
+        db.delete(emp)
+    for idem in db.scalars(select(Idempotency).where(Idempotency.case_id == case.id)).all():
+        db.delete(idem)
+    for event in db.scalars(select(AuditEvent).where(AuditEvent.case_id == case.id)).all():
+        db.delete(event)
+
+    db.delete(case)
+    db.commit()
+    return {"status": "deleted", "case_id": case_id}
+
+
+@router.post("/api/hr/cases/clear-failed")
+def clear_failed_cases(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(hr_principal),
+):
+    failed_cases = db.scalars(select(Case).where(Case.status == "failed")).all()
+    count = 0
+    for case in failed_cases:
+        for doc in db.scalars(select(Document).where(Document.case_id == case.id)).all():
+            db.delete(doc)
+        for emp in db.scalars(select(Employee).where(Employee.case_id == case.id)).all():
+            db.delete(emp)
+        for idem in db.scalars(select(Idempotency).where(Idempotency.case_id == case.id)).all():
+            db.delete(idem)
+        for event in db.scalars(select(AuditEvent).where(AuditEvent.case_id == case.id)).all():
+            db.delete(event)
+        db.delete(case)
+        count += 1
+    db.commit()
+    return {"status": "cleared", "deleted_count": count}
+

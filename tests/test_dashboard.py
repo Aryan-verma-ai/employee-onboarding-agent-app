@@ -66,3 +66,58 @@ def test_export_filters_and_tenant_isolation():
     assert "Other tenant" not in response.text
     response = client.get("/api/hr/export?format=xlsx&department=engineering")
     assert response.status_code == 200 and response.content.startswith(b"PK")
+
+
+def test_delete_case_and_clear_failed():
+    from datetime import datetime, timezone
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.auth import get_principal
+    from app.dashboard import router
+    from app.db import get_db
+    from app.models import Base, Case
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    app = FastAPI()
+    app.include_router(router)
+
+    def database():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = database
+    app.dependency_overrides[get_principal] = lambda: Principal("hr", "tenant-a", frozenset({"HR"}))
+
+    with Session(engine) as db:
+        c1 = Case(id="case-to-delete", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="received")
+        c2 = Case(id="case-failed-1", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="failed")
+        c3 = Case(id="case-failed-2", tenant_id="tenant-a", owner_id="owner", department="hr", consent_at=datetime.now(timezone.utc), status="failed")
+        db.add_all([c1, c2, c3])
+        db.commit()
+
+    client = TestClient(app)
+    # Test delete single case
+    res = client.delete("/api/cases/case-to-delete")
+    assert res.status_code == 200
+    assert res.json()["status"] == "deleted"
+
+    # Verify case-to-delete is gone
+    res_queue = client.get("/api/hr/cases")
+    case_ids = [c["id"] for c in res_queue.json()]
+    assert "case-to-delete" not in case_ids
+
+    # Test clear failed cases
+    res_clear = client.post("/api/hr/cases/clear-failed")
+    assert res_clear.status_code == 200
+    assert res_clear.json()["deleted_count"] == 2
+
+    # Verify no failed cases remain
+    res_queue_after = client.get("/api/hr/cases")
+    assert len(res_queue_after.json()) == 0
+
+
