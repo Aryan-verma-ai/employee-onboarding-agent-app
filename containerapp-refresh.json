@@ -29,12 +29,12 @@
             {"name": "AZURE_DOCUMENT_INTELLIGENCE_AUTH_MODE", "value": "api_key"},
             {"name": "WORKER_TENANT_ID", "value": "a8780332-fecd-4f97-81b8-3782131af31a"},
             {"name": "WORKER_SUBJECT", "value": "onboarding-worker"},
-            {"name": "DEMO_DEPLOYMENT", "value": "photo-fix-v1"}
+            {"name": "DEMO_DEPLOYMENT", "value": "auth-fix-v3"}
           ]
         }
       ],
       "scale": {
-        "minReplicas": 0,
+        "minReplicas": 1,
         "maxReplicas": 1,
         "rules": [{"name": "http", "http": {"metadata": {"concurrentRequests": "10"}}}]
       }

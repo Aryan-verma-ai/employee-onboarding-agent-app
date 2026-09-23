@@ -275,6 +275,63 @@
             border-color: white;
         }
 
+        .btn-primary-header {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+            color: white !important;
+            border: 1px solid rgba(255, 255, 255, 0.4) !important;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.6) !important;
+            font-weight: 700 !important;
+        }
+
+        .btn-primary-header:hover:not(:disabled) {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%) !important;
+            box-shadow: 0 0 18px rgba(59, 130, 246, 0.8) !important;
+        }
+
+        /* --- Sign-in Banner --- */
+        .signin-banner {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 1px solid #bfdbfe;
+            border-radius: var(--radius-lg);
+            padding: 16px 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.08);
+            animation: fadeIn 0.3s ease;
+        }
+        .signin-banner-body {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .signin-banner-icon {
+            font-size: 2rem;
+            line-height: 1;
+        }
+        .signin-banner-text {
+            flex: 1;
+            min-width: 250px;
+        }
+        .signin-banner-title {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #1e3a8a;
+        }
+        .signin-banner-desc {
+            font-size: 0.875rem;
+            color: #1d4ed8;
+            margin-top: 2px;
+        }
+        .signin-banner-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* --- Badges --- */
         .badge {
             display: inline-flex;
@@ -1091,21 +1148,41 @@
     
     <div class="header-actions">
         <div class="status-chip">
-            <span class="status-dot"></span>
-            <span id="auth-status">Checking auth...</span>
+            <span class="status-dot" id="status-dot"></span>
+            <span id="auth-status">Ready</span>
         </div>
         
         <div class="user-chip" id="user-chip-container">
-            <div class="user-avatar" id="user-avatar">HR</div>
-            <span id="user-name">Authenticating...</span>
+            <div class="user-avatar" id="user-avatar">🔒</div>
+            <span id="user-name">Not Signed In</span>
         </div>
         
-        <button id="btn-sign-in" onclick="signInWithPrompt()" class="btn btn-header">🔄 Switch Account</button>
+        <button id="btn-sign-in" onclick="signInWithPrompt(false)" class="btn btn-header btn-primary-header">🔑 Sign In</button>
+        <button id="btn-sign-out" onclick="signOut()" class="btn btn-header hidden" title="Sign out of Microsoft account">🚪 Sign Out</button>
         <button id="btn-back-hr" onclick="closeWorkspace()" class="btn btn-header hidden">← Back to HR Queue</button>
     </div>
 </header>
 
 <div class="container">
+    <!-- Sign-In Notice Banner (shows when user is not authenticated) -->
+    <div id="signin-banner" class="signin-banner hidden">
+        <div class="signin-banner-body">
+            <div class="signin-banner-icon">🔐</div>
+            <div class="signin-banner-text">
+                <div class="signin-banner-title">Microsoft Sign-In Required</div>
+                <div class="signin-banner-desc">Sign in with your Microsoft account (personal, work, or school) to view active cases, review candidate documents, and manage onboarding.</div>
+            </div>
+            <div class="signin-banner-buttons">
+                <button onclick="signInWithPrompt(false)" class="btn btn-primary" style="padding: 10px 22px; font-weight: 700; box-shadow: 0 4px 14px rgba(37,99,235,0.4);">
+                    🔑 Sign In with Microsoft
+                </button>
+                <button onclick="signInWithPrompt(true)" class="btn btn-secondary" style="padding: 10px 14px; font-size: 0.85rem;" title="Use full page redirect if popups are blocked by your browser">
+                    🌐 Redirect Login
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Metrics Bar -->
     <div class="metrics-grid" id="metrics-bar">
         <div class="metric-card">
@@ -1510,23 +1587,54 @@
         });
     }
 
-    // --- MSAL Authentication ---
-    async function initializeSignIn() {
+    // --- MSAL Authentication & Session ---
+    function showSignInBanner() {
+        const el = document.getElementById('signin-banner');
+        if (el) el.classList.remove('hidden');
+    }
+
+    function hideSignInBanner() {
+        const el = document.getElementById('signin-banner');
+        if (el) el.classList.add('hidden');
+    }
+
+    async function initializeSignIn(autoPrompt = true) {
+        const authStatusEl = document.getElementById('auth-status');
+        const userNameEl = document.getElementById('user-name');
+        const userAvatarEl = document.getElementById('user-avatar');
+        const btnSignIn = document.getElementById('btn-sign-in');
+        const btnSignOut = document.getElementById('btn-sign-out');
+
         try {
-            const res = await fetch('/api/auth/config', { cache: 'no-store' });
-            if (!res.ok) throw new Error("Could not fetch MSAL configuration");
+            if (authStatusEl) authStatusEl.innerText = 'Connecting...';
+            
+            // Abort after 6s to prevent hanging on cold starts
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 6000);
+            
+            const res = await fetch('/api/auth/config', { 
+                cache: 'no-store',
+                signal: controller.signal 
+            });
+            clearTimeout(timer);
+
+            if (!res.ok) throw new Error("Could not fetch MSAL configuration (" + res.status + ")");
             const config = await res.json();
             window._authConfig = config;
 
             if (config.development) {
-                document.getElementById('auth-status').innerText = 'Development Mode';
-                document.getElementById('user-name').innerText = 'Dev Admin';
-                document.getElementById('user-avatar').innerText = 'DV';
+                if (authStatusEl) authStatusEl.innerText = 'Development Mode';
+                if (userNameEl) userNameEl.innerText = 'Dev Admin';
+                if (userAvatarEl) userAvatarEl.innerText = 'DV';
+                if (btnSignIn) btnSignIn.classList.add('hidden');
                 authAccount = { username: 'dev', name: 'Dev Admin' };
+                hideSignInBanner();
                 return true;
             }
             if (!config.configured) {
-                document.getElementById('auth-status').innerText = 'Config Pending';
+                if (authStatusEl) authStatusEl.innerText = 'Config Pending';
+                if (userNameEl) userNameEl.innerText = 'Not Configured';
+                showSignInBanner();
                 return false;
             }
 
@@ -1543,10 +1651,14 @@
             });
             await authClient.initialize();
 
+            // Handle redirect response (e.g. user returned from full-page Microsoft sign-in)
             try {
                 const redirectResp = await authClient.handleRedirectPromise();
                 if (redirectResp && redirectResp.account) {
                     authAccount = redirectResp.account;
+                    updateUserHeader(authAccount, true);
+                    showToast(`Signed in as ${authAccount.name || authAccount.username}`, 'success');
+                    return true;
                 }
             } catch(redErr) {
                 console.warn("handleRedirectPromise err:", redErr);
@@ -1561,70 +1673,177 @@
                         account: authAccount
                     });
                     authAccount = silentResp.account || authAccount;
-                    updateUserHeader(authAccount);
+                    updateUserHeader(authAccount, true);
                     return true;
                 } catch(silentErr) {
-                    console.warn("Silent token failed, using existing account display", silentErr);
+                    console.warn("Silent token failed, requiring interaction:", silentErr);
                     updateUserHeader(authAccount, false);
                     return false;
                 }
             }
 
-            document.getElementById('auth-status').innerText = 'Sign-In Required';
-            document.getElementById('user-name').innerText = 'Not Signed In';
+            // Not signed in
+            if (authStatusEl) authStatusEl.innerText = 'Sign-In Required';
+            if (userNameEl) userNameEl.innerText = 'Not Signed In';
+            if (userAvatarEl) userAvatarEl.innerText = '🔒';
+            if (btnSignIn) {
+                btnSignIn.innerText = '🔑 Sign In';
+                btnSignIn.classList.add('btn-primary-header');
+                btnSignIn.classList.remove('hidden');
+            }
+            if (btnSignOut) btnSignOut.classList.add('hidden');
+            showSignInBanner();
+
+            // Attempt auto-login popup so user immediately gets the ID chooser window
+            if (autoPrompt) {
+                setTimeout(() => {
+                    signInWithPrompt(false, true);
+                }, 400);
+            }
             return false;
         } catch (error) {
             console.error("Auth init error:", error);
-            document.getElementById('auth-status').innerText = 'Sign-In Required';
+            if (authStatusEl) authStatusEl.innerText = 'Sign-In Required';
+            if (userNameEl) userNameEl.innerText = 'Not Signed In';
+            if (userAvatarEl) userAvatarEl.innerText = '🔒';
+            if (btnSignIn) {
+                btnSignIn.innerText = '🔑 Sign In';
+                btnSignIn.classList.add('btn-primary-header');
+                btnSignIn.classList.remove('hidden');
+            }
+            showSignInBanner();
             return false;
         }
     }
 
     function updateUserHeader(acc, active = true) {
+        const authStatusEl = document.getElementById('auth-status');
+        const userNameEl = document.getElementById('user-name');
+        const userAvatarEl = document.getElementById('user-avatar');
+        const btnSignIn = document.getElementById('btn-sign-in');
+        const btnSignOut = document.getElementById('btn-sign-out');
+
+        if (!acc) {
+            if (userNameEl) userNameEl.innerText = 'Not Signed In';
+            if (authStatusEl) authStatusEl.innerText = 'Sign-In Required';
+            if (userAvatarEl) userAvatarEl.innerText = '🔒';
+            if (btnSignIn) {
+                btnSignIn.innerText = '🔑 Sign In';
+                btnSignIn.classList.add('btn-primary-header');
+            }
+            if (btnSignOut) btnSignOut.classList.add('hidden');
+            showSignInBanner();
+            return;
+        }
+
         const displayName = acc.name || acc.username || 'HR Agent';
-        document.getElementById('user-name').innerText = displayName;
-        document.getElementById('auth-status').innerText = active ? 'Entra Connected' : 'Session Expired';
+        if (userNameEl) userNameEl.innerText = displayName;
+        if (authStatusEl) authStatusEl.innerText = active ? 'Connected' : 'Session Expired';
         
         // Initials avatar
         const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'HR';
-        document.getElementById('user-avatar').innerText = initials;
+        if (userAvatarEl) userAvatarEl.innerText = initials;
+
+        if (btnSignIn) {
+            btnSignIn.innerText = '🔄 Switch Account';
+            btnSignIn.classList.remove('btn-primary-header');
+        }
+        if (btnSignOut) btnSignOut.classList.remove('hidden');
+        hideSignInBanner();
     }
 
-    async function signInWithPrompt() {
-        if (!authClient || !window._authConfig) return;
+    async function signInWithPrompt(forceRedirect = false, isAuto = false) {
+        if (!authClient) {
+            await initializeSignIn(false);
+        }
+        if (!authClient || !window._authConfig) {
+            if (!isAuto) showToast("Authentication service is initializing, please click again in a few seconds.", "info");
+            return;
+        }
+
+        const authStatusEl = document.getElementById('auth-status');
+        if (authStatusEl) authStatusEl.innerText = 'Opening login...';
+
+        const loginRequest = {
+            scopes: [window._authConfig.scope],
+            prompt: 'select_account' // Allows choosing personal or work/school account
+        };
+
+        if (forceRedirect) {
+            try {
+                await authClient.loginRedirect(loginRequest);
+            } catch (err) {
+                console.error("Redirect login error:", err);
+                showToast("Redirect failed: " + (err.message || err), 'error');
+            }
+            return;
+        }
+
         try {
-            document.getElementById('auth-status').innerText = 'Signing in...';
-            const response = await authClient.loginPopup({
-                scopes: [window._authConfig.scope],
-                prompt: 'select_account'
-            });
+            const response = await authClient.loginPopup(loginRequest);
             authAccount = response.account;
             updateUserHeader(authAccount, true);
             showToast(`Signed in as ${authAccount.name || authAccount.username}`, 'success');
             if (currentCaseId) await refreshProfile();
             loadHrQueue();
         } catch (err) {
-            console.error("Sign-in error:", err);
-            document.getElementById('auth-status').innerText = 'Sign-In Required';
-            if (err.errorCode !== 'user_cancelled') {
-                showToast("Sign-in failed: " + (err.errorMessage || err.message || err), 'error');
+            console.warn("Popup login error:", err);
+            const isPopupBlocked = err.errorCode === 'popup_window_error' || 
+                                   err.errorCode === 'empty_window_error' ||
+                                   (err.message && err.message.toLowerCase().includes('popup')) ||
+                                   err.name === 'BrowserAuthError';
+            
+            if (isPopupBlocked) {
+                if (isAuto) {
+                    // Browser blocked popup on automatic page load; banner remains visible for 1-click login
+                    if (authStatusEl) authStatusEl.innerText = 'Sign-In Required';
+                    return;
+                }
+                // User explicitly clicked sign-in, but popup was blocked -> smoothly redirect to Microsoft login
+                showToast("Popup blocked by browser. Redirecting to Microsoft sign-in...", "info");
+                try {
+                    await authClient.loginRedirect(loginRequest);
+                    return;
+                } catch (redErr) {
+                    console.error("Redirect fallback error:", redErr);
+                }
+            }
+
+            if (authStatusEl) authStatusEl.innerText = 'Sign-In Required';
+            if (err.errorCode !== 'user_cancelled' && !isAuto) {
+                showToast("Sign-in note: " + (err.errorMessage || err.message || err), 'warning');
             }
         }
     }
 
+    async function signOut() {
+        if (!authClient) return;
+        try {
+            await authClient.logoutPopup();
+        } catch (e) {
+            try {
+                await authClient.clearCache();
+            } catch (cErr) {}
+        }
+        authAccount = null;
+        updateUserHeader(null, false);
+        showToast("Signed out of Microsoft account.", 'info');
+    }
+
     async function authHeaders() {
         if (window._authConfig && window._authConfig.development) return {};
+        if (!authClient) {
+            await initializeSignIn(false);
+        }
         if (!authAccount && authClient) {
             const accs = authClient.getAllAccounts();
             if (accs.length > 0) authAccount = accs[0];
         }
         if (!authAccount || !authClient) {
-            const res = await authClient.loginPopup({
-                scopes: [window._authConfig.scope],
-                prompt: 'select_account'
-            });
-            authAccount = res.account;
-            updateUserHeader(authAccount, true);
+            await signInWithPrompt(false, false);
+            if (!authAccount) {
+                throw new Error("Microsoft sign-in required to continue.");
+            }
         }
         try {
             const response = await authClient.acquireTokenSilent({
@@ -1634,11 +1853,18 @@
             return { 'Authorization': `Bearer ${response.accessToken}` };
         } catch (error) {
             if (error instanceof msal.InteractionRequiredAuthError || error.name === 'InteractionRequiredAuthError') {
-                const response = await authClient.acquireTokenPopup({
-                    scopes: [window._authConfig.scope],
-                    account: authAccount
-                });
-                return { 'Authorization': `Bearer ${response.accessToken}` };
+                try {
+                    const response = await authClient.acquireTokenPopup({
+                        scopes: [window._authConfig.scope],
+                        account: authAccount
+                    });
+                    return { 'Authorization': `Bearer ${response.accessToken}` };
+                } catch (popupErr) {
+                    await authClient.acquireTokenRedirect({
+                        scopes: [window._authConfig.scope],
+                        account: authAccount
+                    });
+                }
             }
             throw error;
         }
