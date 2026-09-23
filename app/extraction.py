@@ -162,16 +162,25 @@ def extract_document(content: bytes, document_id: str) -> dict:
 
 
 def classify_document(candidates: list[dict], filename: str = "", content_type: str = "") -> str:
-    """Auto-classify document type from OCR extraction candidates, filename, and mime type."""
+    """Auto-classify document type from OCR extraction candidates, filename, and mime type.
+
+    CRITICAL: Aadhaar and PAN cards are frequently uploaded as smartphone photos or
+    scans (e.g. WhatsApp Image..., IMG_..., camera photos). They contain legal ID text
+    and numbers. They must ALWAYS be classified by their OCR content and NEVER blindly
+    treated as a candidate profile photograph!
+    """
     fn_lower = (filename or "").lower()
     ct_lower = (content_type or "").lower()
 
-    if any(k in fn_lower for k in ("photo", "pic", "profile", "headshot", "avatar", "image")):
-        return "photograph"
-    if ct_lower.startswith("image/") and not candidates:
-        return "photograph"
+    # 1. Filename explicit hints for PAN, Aadhaar, Resume
+    if any(k in fn_lower for k in ("pan", "pancard")):
+        return "pan"
+    if any(k in fn_lower for k in ("aadhaar", "aadhar")):
+        return "aadhaar"
+    if any(k in fn_lower for k in ("resume", "cv", "curriculum_vitae")):
+        return "resume"
 
-    # Check for doc_type_hint from LLM
+    # 2. Check for LLM doc_type_hint from structured extraction
     for c in candidates:
         hint = c.get("doc_type_hint", "")
         if hint and isinstance(hint, str):
@@ -183,13 +192,23 @@ def classify_document(candidates: list[dict], filename: str = "", content_type: 
             if "resume" in hint_lower or "cv" in hint_lower:
                 return "resume"
 
+    # 3. Check extracted fields from OCR candidates
     fields_found = {c["field"] for c in candidates}
     if "pan" in fields_found:
         return "pan"
     if "aadhaar" in fields_found:
         return "aadhaar"
-    if "email" in fields_found or "phone" in fields_found or "resume" in fn_lower:
+    if "email" in fields_found or "phone" in fields_found:
         return "resume"
-    if ct_lower.startswith("image/"):
+
+    # 4. Only classify as photograph if filename explicitly indicates a profile headshot/avatar
+    if any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "avatar", "profile_photo")):
         return "photograph"
+
+    # 5. Image file with zero text candidates (i.e. pure photo with no document text)
+    if ct_lower.startswith("image/") and not candidates:
+        # If filename doesn't hint at an ID card scan
+        if not any(k in fn_lower for k in ("pan", "aadhaar", "aadhar", "card", "id", "doc")):
+            return "photograph"
+
     return "other"

@@ -110,7 +110,7 @@ def list_documents(
     # Auto-complete photograph documents (photographs do not require OCR)
     changed = False
     for doc in docs:
-        if (doc.doc_type == "photograph" or (doc.content_type and doc.content_type.startswith("image/"))) and (not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}):
+        if doc.doc_type == "photograph" and (not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}):
             doc.doc_type = "photograph"
             doc.extraction = {
                 "status": "complete",
@@ -232,12 +232,6 @@ def get_case_photo(
         .order_by(Document.created_at.desc())
     )
     if not doc:
-        doc = db.scalar(
-            select(Document)
-            .where(Document.case_id == case.id, Document.content_type.like("image/%"))
-            .order_by(Document.created_at.desc())
-        )
-    if not doc:
         raise HTTPException(404, "No photograph found for this case")
     content = read_clean_content(doc)
     return Response(
@@ -344,7 +338,7 @@ async def auto_upload_and_extract(
         doc_type = "aadhaar"
     elif any(k in fn_lower for k in ("resume", "cv")):
         doc_type = "resume"
-    elif any(k in fn_lower for k in ("photo", "pic", "headshot", "profile", "avatar")) or ct_lower.startswith("image/"):
+    elif any(k in fn_lower for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")):
         doc_type = "photograph"
     else:
         doc_type = "other"

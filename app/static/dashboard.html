@@ -2123,7 +2123,7 @@
         let photoDocId = null;
         
         docs.forEach(d => {
-            const isPhoto = d.doc_type === 'photograph' || (d.content_type && d.content_type.startsWith('image/')) || (d.filename && /\.(jpe?g|png|webp)$/i.test(d.filename));
+            const isPhoto = d.doc_type === 'photograph';
             if (isPhoto && !hasPhoto) {
                 hasPhoto = true;
                 photoDocId = d.id;
