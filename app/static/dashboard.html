@@ -141,10 +141,14 @@
                 <div style="font-size: 0.75em; text-transform: uppercase; color: #666; font-weight: bold;">Start Working Date</div>
                 <div id="success-start-date" style="font-size: 1.05em; font-weight: 700; color: #333;"></div>
             </div>
-            <div id="success-email-box" style="background: #eef6ff; border-radius: 6px; padding: 8px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #b9d7ea;">
+            <div id="success-email-box" style="background: #eef6ff; border-radius: 6px; padding: 10px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #b9d7ea;">
                 <div style="font-size: 0.75em; text-transform: uppercase; color: #005a9e; font-weight: bold;">Official Welcome Email</div>
-                <div id="success-email-text" style="font-size: 0.85em; color: #004578; margin-top: 3px; word-break: break-all;">✉️ Dispatched to candidate</div>
-                <button id="btn-resend-email" onclick="resendWelcomeEmail()" style="margin-top: 6px; font-size: 0.78em; padding: 4px 10px; background: #0078d4; color: white; border: none; border-radius: 3px; cursor: pointer;">✉️ Resend Email</button>
+                <div id="success-email-text" style="font-size: 0.85em; color: #004578; margin: 4px 0 8px 0; word-break: break-all;">✉️ Ready to dispatch</div>
+                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+                    <button id="btn-open-gmail" onclick="openWelcomeEmailClient('gmail')" style="font-size: 0.78em; padding: 5px 10px; background: #ea4335; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🚀 Send via Gmail</button>
+                    <button id="btn-open-mailto" onclick="openWelcomeEmailClient('mailto')" style="font-size: 0.78em; padding: 5px 10px; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✉️ Send via Mail App</button>
+                    <button id="btn-resend-email" onclick="resendWelcomeEmail()" style="font-size: 0.78em; padding: 5px 8px; background: #475569; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡ Server Dispatch</button>
+                </div>
             </div>
             <button onclick="openFullProfileModal()" style="width: 100%; font-size: 0.9em; padding: 8px; background: #2e7d32; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;">📋 View Full Employee Profile</button>
         </div>
@@ -259,8 +263,10 @@
             </table>
         </div>
 
-        <div style="display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;">
-            <button onclick="resendWelcomeEmail()" class="btn-secondary" style="padding: 8px 16px; background: #0078d4; color: white;">✉️ Resend Welcome Email</button>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+            <button onclick="openWelcomeEmailClient('gmail')" class="btn-secondary" style="padding: 8px 14px; background: #ea4335; color: white; font-weight: bold;">🚀 Send via Gmail</button>
+            <button onclick="openWelcomeEmailClient('mailto')" class="btn-secondary" style="padding: 8px 14px; background: #0078d4; color: white; font-weight: bold;">✉️ Send via Mail App</button>
+            <button onclick="resendWelcomeEmail()" class="btn-secondary" style="padding: 8px 12px; background: #475569; color: white;">⚡ Server Dispatch</button>
             <button onclick="exportProfile()" class="btn-primary" style="background: #2e7d32; padding: 8px 16px;">📥 Export Profile (Excel)</button>
             <button onclick="closeFullProfileModal()" class="btn-secondary" style="padding: 8px 16px;">Close</button>
         </div>
@@ -733,6 +739,50 @@
 
     function closeFullProfileModal() {
         document.getElementById('full-profile-modal').classList.add('hidden');
+    }
+
+    function openWelcomeEmailClient(clientType) {
+        if (!window._currentCaseData) return;
+        const c = window._currentCaseData;
+        const d = c.data || {};
+        const recipient = d.email || '';
+        const name = d.full_name || 'Team Member';
+        const empId = c.employee_id || 'PENDING';
+        const dept = (c.department || 'GENERAL').toUpperCase();
+        const startDate = d.start_date || c.start_date || 'Upcoming Orientation Date';
+
+        const subject = `🎉 Welcome to the Team, ${name}! | Official Employee ID: ${empId}`;
+        const body = `Dear ${name},
+
+Congratulations! We are delighted to inform you that your employee onboarding documents have been verified and approved. Your official employment profile is now active!
+
+EMPLOYMENT DETAILS:
+------------------------------------------
+• Full Name:           ${name}
+• Employee ID:         ${empId}
+• Department:          ${dept}
+• Official Start Date: ${startDate}
+• Email Address:       ${recipient}
+------------------------------------------
+
+NEXT STEPS BEFORE DAY 1:
+1. Keep this Employee ID (${empId}) handy for security badge issuance and IT asset pickup.
+2. Check your inbox for orientation details and welcome session invites.
+3. You can review and download your complete signed profile and Excel record from your onboarding workspace.
+
+Welcome aboard! We are excited to have you on our team.
+
+Warm regards,
+Human Resources & Employee Onboarding Team`;
+
+        if (clientType === 'gmail') {
+            const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(url, '_blank');
+        } else {
+            const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.location.href = mailto;
+        }
+        addSystemMessage(`✉️ Welcome email composer opened for ${recipient || 'candidate'}`);
     }
 
     async function resendWelcomeEmail() {

@@ -50,10 +50,14 @@ def auth_config():
         "configured": configured,
         "development": settings.environment == "development" and settings.allow_dev_auth,
     }
-    if configured:
+        authority = os.getenv("ENTRA_AUTHORITY") or (
+            "https://login.microsoftonline.com/organizations"
+            if os.getenv("ENTRA_MULTITENANT", "true").lower() == "true"
+            else f"https://login.microsoftonline.com/{tenant}"
+        )
         body.update(
             client_id=client,
-            authority=f"https://login.microsoftonline.com/{tenant}",
+            authority=authority,
             scope=scope,
             redirect_uri=redirect,
         )
