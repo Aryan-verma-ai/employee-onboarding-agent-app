@@ -37,7 +37,6 @@ EMPLOYMENT DETAILS:
 NEXT STEPS BEFORE DAY 1:
 1. Keep this Employee ID ({emp_id}) handy for security badge issuance and IT asset pickup.
 2. Check your inbox for virtual orientation details and welcome session invites.
-3. You can review and download your complete signed profile and Excel record from your onboarding workspace.
 
 Welcome aboard! We are excited to have you on our team.
 
@@ -113,7 +112,6 @@ Azure AI Foundry Onboarding Portal
       <ul>
         <li><strong>Save your Employee ID ({emp_id})</strong> for security access badge issuance and IT asset pickup.</li>
         <li>Your orientation schedule and team intro calls will be sent to this email address.</li>
-        <li>You can access and export your verified Excel profile anytime from the onboarding workspace.</li>
       </ul>
     </div>
 
