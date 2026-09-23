@@ -50,6 +50,7 @@ def auth_config():
         "configured": configured,
         "development": settings.environment == "development" and settings.allow_dev_auth,
     }
+    if configured:
         authority = os.getenv("ENTRA_AUTHORITY") or (
             "https://login.microsoftonline.com/organizations"
             if os.getenv("ENTRA_MULTITENANT", "true").lower() == "true"
