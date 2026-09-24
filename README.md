@@ -294,10 +294,11 @@ See [Deployment Checklist](docs/DEPLOYMENT.md) and [Production Setup](docs/PRODU
 
 ## 👥 Contributors
 
-- [Aryan Verma](https://github.com/Aryan-verma-ai)
-- [Neelabh](https://github.com/neelabh16)
-- [Nitin Kataria](https://github.com/NitinKataria)
-
+- Neelabh
+- Aryan Verma
+- Richa
+- Ravneet Kaur
+- Nitin Kataria
 ---
 
 ## 📄 License
