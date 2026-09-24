@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -58,7 +59,16 @@ def get_principal(
             f"https://sts.windows.net/{token_tid}/",
         ):
             raise ValueError(f"Invalid issuer: {iss}")
-        roles = frozenset({"HR", "Onboarding.HR"} | set(claims.get("roles") or []))
+        # Derive roles strictly from Entra token claims: app roles ('roles'), scopes ('scp'), or configured HR identities
+        token_roles = set(claims.get("roles") or [])
+        scp = claims.get("scp", "")
+        if isinstance(scp, str) and ("Onboarding.HR" in scp or "HR" in scp.split()):
+            token_roles.add("HR")
+        email = claims.get("preferred_username") or claims.get("upn") or claims.get("email") or ""
+        hr_emails = {e.strip().lower() for e in os.getenv("ENTRA_HR_EMAILS", "").split(",") if e.strip()}
+        if email and email.lower() in hr_emails:
+            token_roles.add("HR")
+        roles = frozenset(token_roles)
         shared_tenant = settings.entra_tenant_id or claims.get("tid", "demo-tenant")
         return Principal(claims.get("oid", claims.get("sub", "user")), shared_tenant, roles)
     except (jwt.PyJWTError, ValueError) as err:

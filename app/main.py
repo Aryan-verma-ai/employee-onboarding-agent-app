@@ -140,6 +140,26 @@ app.include_router(confirmation_router)
 app.include_router(sso_router)
 
 
+@app.get("/api/mcp/tools")
+def list_mcp_tools():
+    """Discover available Model Context Protocol (MCP) tools for Microsoft Foundry."""
+    from .mcp_server import MCPToolServer
+
+    return {"tools": MCPToolServer.list_tools()}
+
+
+@app.post("/api/cases/{case_id}/mcp")
+def mcp_case_endpoint(case_id: str, body: dict, svc=Depends(service)):
+    """Execute authenticated MCP JSON-RPC tool calls scoped to an authorized case."""
+    from .mcp_server import MCPToolServer
+
+    case = svc.get_case(case_id)
+    svc.require_consent(case)
+    server = MCPToolServer(svc, case_id)
+    return server.handle_jsonrpc(body)
+
+
+
 class UpdateCase(BaseModel):
     data: dict[str, str] = Field(default_factory=dict)
     reviewed_document_ids: list[str] = Field(default_factory=list)

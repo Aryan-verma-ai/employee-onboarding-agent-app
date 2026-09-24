@@ -227,6 +227,94 @@ class OnboardingService:
             "onboarding_message": onboarding_msg,
         }
 
+    def document_workflow(self, case_id):
+        case = self.get_case(case_id)
+        documents = self.db.scalars(
+            select(Document).where(Document.case_id == case_id).order_by(Document.version)
+        ).all()
+        return [
+            {
+                "id": doc.id,
+                "filename": doc.filename,
+                "doc_type": doc.doc_type,
+                "version": doc.version,
+                "scan_status": doc.scan_status,
+                "extraction_status": (doc.extraction or {}).get("status", "pending"),
+            }
+            for doc in documents
+        ]
+
+    def request_document_extraction(self, case_id, document_id=None):
+        case = self.get_case(case_id)
+        self.require_consent(case)
+        from .jobs import enqueue
+
+        query = select(Document).where(Document.case_id == case_id)
+        if document_id:
+            query = query.where(Document.id == document_id)
+        documents = self.db.scalars(query).all()
+        queued = []
+        for doc in documents:
+            status = (doc.extraction or {}).get("status")
+            if status != "complete" or document_id:
+                job = enqueue(self.db, self.principal, case, doc)
+                doc.extraction = {"status": job.status, "retryable": True, "job_id": job.id}
+                queued.append(doc.id)
+                self.audit(case_id, "document.extraction_queued", {"document_id": doc.id, "job_id": job.id})
+        if queued and case.status != "created":
+            self.transition(case, "extracting")
+        self.db.commit()
+        return {"queued_count": len(queued), "document_ids": queued}
+
+    def profile_readiness(self, case_id):
+        case = self.get_case(case_id)
+        errors = self.validation_errors(case)
+        data = case.data or {}
+        has_id = bool(data.get("pan") or data.get("aadhaar"))
+        has_contact = bool(data.get("email") and data.get("phone"))
+        has_name = bool(data.get("full_name"))
+        ready = not bool(errors)
+        return {
+            "case_id": case_id,
+            "status": case.status,
+            "ready_for_validation": ready,
+            "ready_for_finalization": case.status == "validated" or (ready and self.principal.is_hr),
+            "missing_fields": errors,
+            "has_identity": has_id,
+            "has_contact": has_contact,
+            "has_name": has_name,
+            "has_photograph": bool(data.get("has_photograph")),
+        }
+
+    def confirmation_readiness(self, case_id):
+        case = self.get_case(case_id)
+        errors = self.validation_errors(case)
+        return {
+            "case_id": case_id,
+            "ready": case.status == "validated",
+            "is_hr": self.principal.is_hr,
+            "missing_fields": errors,
+        }
+
+    def get_employee_profile(self, case_id):
+        case = self.get_case(case_id)
+        data = case.data or {}
+        return {
+            "case_id": case_id,
+            "department": case.department,
+            "status": case.status,
+            "employee_id": case.employee_id,
+            "full_name": data.get("full_name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "address": data.get("address"),
+            "dob": data.get("dob"),
+            "has_pan": bool(data.get("pan")),
+            "has_aadhaar": bool(data.get("aadhaar")),
+            "has_photograph": bool(data.get("has_photograph")),
+            "start_date": data.get("start_date"),
+        }
+
     def finalize_case(self, case_id, confirmed, idempotency_key):
         import secrets
         from datetime import datetime, timedelta, timezone
