@@ -48,6 +48,11 @@ async def lifespan(app):
 app = FastAPI(title="Foundry Employee Onboarding", lifespan=lifespan)
 
 
+@app.get("/api/version")
+def api_version():
+    return {"version": "v27-hr-restored", "hr_auth": "restored"}
+
+
 def service(db=Depends(get_db), principal=Depends(get_principal)):
     return OnboardingService(db, principal)
 
