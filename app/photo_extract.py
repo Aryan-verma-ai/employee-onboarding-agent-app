@@ -71,18 +71,33 @@ def _find_face_region_from_image(img) -> Optional[tuple]:
         zones.append((int(w * 0.05), int(h * 0.15), int(w * 0.55), int(h * 0.65)))
         zones.append((int(w * 0.10), int(h * 0.08), int(w * 0.90), int(h * 0.50)))
 
+    from PIL import Image
+
     # Pass 1: Skin-tone cluster detection (crops strictly around headshot/portrait)
     for zx1, zy1, zx2, zy2 in zones:
         zone = img.crop((zx1, zy1, zx2, zy2))
         zw, zh = zone.size
-        skin_pts = []
-        for y in range(0, zh, 2):
-            for x in range(0, zw, 2):
-                p = zone.getpixel((x, y))
-                if _is_skin_pixel(p[0], p[1], p[2]):
-                    skin_pts.append((x, y))
+        # Downscale zone for fast skin-tone clustering if it's large
+        scale = 1.0
+        if zw > 200 or zh > 200:
+            scale = 200.0 / max(zw, zh)
+            small_w = max(1, int(zw * scale))
+            small_h = max(1, int(zh * scale))
+            proc_zone = zone.resize((small_w, small_h), Image.BILINEAR)
+        else:
+            proc_zone = zone
 
-        if len(skin_pts) >= 30:
+        pw, ph = proc_zone.size
+        raw = proc_zone.tobytes()
+        skin_pts = []
+        for y in range(0, ph, 2):
+            row_offset = y * pw * 3
+            for x in range(0, pw, 2):
+                idx = row_offset + x * 3
+                if _is_skin_pixel(raw[idx], raw[idx + 1], raw[idx + 2]):
+                    skin_pts.append((int(x / scale), int(y / scale)))
+
+        if len(skin_pts) >= 20:
             xs = sorted(p[0] for p in skin_pts)
             ys = sorted(p[1] for p in skin_pts)
             n = len(xs)
@@ -116,7 +131,8 @@ def _find_face_region_from_image(img) -> Optional[tuple]:
             int(h * 0.62),
         )
         sample = img.crop((frame_x1, frame_y1, frame_x2, frame_y2)).convert("L")
-        pixels = list(sample.tobytes())
+        sample_small = sample.resize((100, 100))
+        pixels = list(sample_small.tobytes())
         mean = sum(pixels) / len(pixels)
         variance = sum((p - mean) ** 2 for p in pixels) / len(pixels)
         std_dev = variance**0.5

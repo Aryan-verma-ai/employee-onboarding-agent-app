@@ -2250,7 +2250,9 @@
         const photoDocs = docs.filter(d => d.doc_type === 'photograph');
         let photoDocId = null;
         if (photoDocs.length > 0) {
-            const designatedId = currentCaseData && currentCaseData.photograph_document_id;
+            const caseObj = window._currentCaseData || {};
+            const caseDataFields = caseObj.data || {};
+            const designatedId = caseDataFields.photograph_document_id || caseObj.photograph_document_id;
             const designatedDoc = designatedId ? photoDocs.find(d => d.id === designatedId) : null;
             
             // User-uploaded photographs always take precedence over auto-extracted ID card crops
