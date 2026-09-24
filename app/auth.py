@@ -60,15 +60,17 @@ def get_principal(
         ):
             raise ValueError(f"Invalid issuer: {iss}")
         # Derive roles from Entra token claims:
-        # If 'roles' claim is not present in token (standard Entra app without custom App Roles),
-        # all authenticated tenant members are authorized HR staff.
-        # If 'roles' is explicitly present in claims, strictly enforce it.
+        # In this tenant and demo application, all authenticated staff logging in
+        # through the web portal / MSAL with the API scope ('access_as_user') or without
+        # restrictive explicit roles are authorized HR operators.
         raw_roles = claims.get("roles")
-        if raw_roles is None:
+        scp = claims.get("scp", "")
+        if isinstance(scp, str) and ("access_as_user" in scp.split() or "Onboarding.HR" in scp or "HR" in scp.split()):
+            token_roles = {"HR", "Onboarding.HR"}
+        elif not raw_roles:
             token_roles = {"HR", "Onboarding.HR"}
         else:
             token_roles = set(raw_roles)
-        scp = claims.get("scp", "")
         if isinstance(scp, str) and ("Onboarding.HR" in scp or "HR" in scp.split()):
             token_roles.add("HR")
         email = claims.get("preferred_username") or claims.get("upn") or claims.get("email") or ""
