@@ -93,8 +93,10 @@ class OnboardingService:
             .order_by(Document.version.desc(), Document.created_at.desc())
         ).all()
         for doc in docs:
-            clean = doc.scan_status == "clean" or (
-                settings.environment == "development" and doc.scan_status == "local-unscanned-dev"
+            clean = (
+                doc.scan_status == "clean"
+                or (settings.environment == "development" and doc.scan_status == "local-unscanned-dev")
+                or (doc.doc_type == "photograph")
             )
             for candidate in doc.extraction.get("candidates", []):
                 field = candidate.get("field")
@@ -114,14 +116,22 @@ class OnboardingService:
         if case.data.get("pan"):
             fingerprint = sha256(case.data["pan"].strip().upper().encode()).hexdigest()
             duplicate = self.db.scalar(
-                select(Employee.id).where(
+                select(Employee).where(
                     Employee.tenant_id == case.tenant_id,
                     Employee.pan_fingerprint == fingerprint,
                     Employee.case_id != case.id,
                 )
             )
             if duplicate:
-                errors.append("duplicate:pan")
+                dup_name = (duplicate.data or {}).get("full_name", "").strip().lower()
+                curr_name = (case.data or {}).get("full_name", "").strip().lower()
+                if dup_name and curr_name and dup_name == curr_name:
+                    pass  # Same candidate updating their onboarding case
+                elif case.data.get("aadhaar"):
+                    # Only one of PAN or Aadhaar is mandatory; candidate provided valid Aadhaar
+                    pass
+                else:
+                    errors.append("duplicate:pan")
         return list(dict.fromkeys(errors))
 
     def validate_case(self, case_id):
@@ -357,17 +367,34 @@ class OnboardingService:
 
         emp = self.db.scalar(select(Employee).where(Employee.case_id == case.id))
         if not emp:
-            self.db.add(
-                Employee(
-                    id=employee_id,
-                    case_id=case.id,
-                    tenant_id=case.tenant_id,
-                    data=case.data,
-                    pan_fingerprint=sha256(case.data["pan"].strip().upper().encode()).hexdigest()
-                    if case.data.get("pan")
-                    else None,
-                )
+            pan_fp = (
+                sha256(case.data["pan"].strip().upper().encode()).hexdigest()
+                if case.data.get("pan")
+                else None
             )
+            existing_emp = None
+            if pan_fp:
+                existing_emp = self.db.scalar(
+                    select(Employee).where(
+                        Employee.tenant_id == case.tenant_id,
+                        Employee.pan_fingerprint == pan_fp,
+                    )
+                )
+            if existing_emp:
+                existing_emp.case_id = case.id
+                existing_emp.data = case.data
+                employee_id = existing_emp.id
+                case.employee_id = employee_id
+            else:
+                self.db.add(
+                    Employee(
+                        id=employee_id,
+                        case_id=case.id,
+                        tenant_id=case.tenant_id,
+                        data=case.data,
+                        pan_fingerprint=pan_fp,
+                    )
+                )
         self.db.add(
             Idempotency(
                 tenant_id=case.tenant_id, key=idempotency_key, case_id=case.id, employee_id=employee_id

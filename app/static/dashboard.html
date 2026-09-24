@@ -2124,10 +2124,16 @@
             if (f.key === 'department' && !val && caseData.department) {
                 val = caseData.department;
             }
+            if (f.key === 'start_date' && !val && caseData.start_date) {
+                val = caseData.start_date;
+            }
             const row = document.createElement('div');
             row.className = 'field-item';
             
-            const displayVal = val ? (f.key === 'department' ? val.toUpperCase() : val) : '—';
+            let displayVal = val ? (f.key === 'department' ? val.toUpperCase() : val) : '—';
+            if (f.key === 'start_date' && !val) {
+                displayVal = '<span style="color: #64748b; font-style: italic; font-size: 0.8rem;">Auto-assigned upon validation</span>';
+            }
             
             row.innerHTML = `
                 <span class="field-label-text">${f.label}:</span>
@@ -2137,8 +2143,8 @@
             fieldsContainer.appendChild(row);
         });
 
-        // Compute Missing Fields
-        const missing = caseData.missing_fields || [];
+        // Compute Missing Fields (start_date is automatically generated upon validation/creation)
+        const missing = (caseData.missing_fields || []).filter(m => m !== 'start_date');
         const missingSec = document.getElementById('missing-section');
         if (missing.length > 0) {
             missingSec.classList.remove('hidden');
@@ -2151,7 +2157,7 @@
                 'phone': 'Phone Number',
                 'department': 'Department'
             };
-            const friendly = missing.map(m => friendlyMap[m] || m.replace(/^document:/, 'Document: ').replace(/^conflict:/, 'Conflict: '));
+            const friendly = missing.map(m => friendlyMap[m] || m.replace(/^document:/, 'Document: ').replace(/^conflict:/, 'Conflict: ').replace(/^scan:/, 'Scan: ').replace(/^duplicate:/, 'Duplicate: '));
             document.getElementById('missing-list').innerText = friendly.join(' • ');
         } else {
             missingSec.classList.add('hidden');
@@ -2261,11 +2267,13 @@
             );
             
             if (userUploadedPhotos.length > 0) {
-                photoDocId = userUploadedPhotos[userUploadedPhotos.length - 1].id;
+                const sorted = [...userUploadedPhotos].sort((a, b) => (b.version || 0) - (a.version || 0));
+                photoDocId = sorted[0].id;
             } else if (designatedDoc) {
                 photoDocId = designatedDoc.id;
             } else {
-                photoDocId = photoDocs[photoDocs.length - 1].id;
+                const sorted = [...photoDocs].sort((a, b) => (b.version || 0) - (a.version || 0));
+                photoDocId = sorted[0].id;
             }
         }
         
@@ -2295,7 +2303,7 @@
         });
 
         if (photoDocId) {
-            loadProfilePhoto(photoDocId);
+            loadProfilePhoto(photoDocId, photoDocId !== _loadedPhotoDocId);
         } else {
             const img = document.getElementById('profile-photo-img');
             const placeholder = document.getElementById('profile-photo-placeholder');
@@ -2357,13 +2365,14 @@
             if (placeholder) placeholder.classList.add('hidden');
             return;
         }
-        _loadedPhotoDocId = docId;
         try {
-            const blob = await api(`/api/cases/${currentCaseId}/documents/${docId}/download`, { responseType: 'blob' });
+            const cacheBuster = `?t=${Date.now()}`;
+            const blob = await api(`/api/cases/${currentCaseId}/documents/${docId}/download${cacheBuster}`, { responseType: 'blob' });
             if (_currentPhotoBlobUrl) {
                 URL.revokeObjectURL(_currentPhotoBlobUrl);
             }
             _currentPhotoBlobUrl = URL.createObjectURL(blob);
+            _loadedPhotoDocId = docId;
             const img = document.getElementById('profile-photo-img');
             const placeholder = document.getElementById('profile-photo-placeholder');
             if (img) {
@@ -2384,6 +2393,7 @@
             }
         } catch(e) {
             console.warn("Failed to load photo blob:", e);
+            _loadedPhotoDocId = null;
         }
     }
 
@@ -2708,6 +2718,22 @@ Human Resources & Employee Onboarding Team`;
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 addSystemMessage(`📄 Uploading: ${file.name}...`);
+                
+                // Immediate local preview if file is an image
+                const isImg = (file.type && file.type.startsWith('image/')) || 
+                              /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
+                if (isImg) {
+                    try {
+                        const localUrl = URL.createObjectURL(file);
+                        const img = document.getElementById('profile-photo-img');
+                        const placeholder = document.getElementById('profile-photo-placeholder');
+                        if (img) {
+                            img.src = localUrl;
+                            img.classList.remove('hidden');
+                        }
+                        if (placeholder) placeholder.classList.add('hidden');
+                    } catch(e) {}
+                }
                 
                 const formData = new FormData();
                 formData.append('file', file);

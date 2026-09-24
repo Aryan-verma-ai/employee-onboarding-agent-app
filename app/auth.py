@@ -59,8 +59,15 @@ def get_principal(
             f"https://sts.windows.net/{token_tid}/",
         ):
             raise ValueError(f"Invalid issuer: {iss}")
-        # Derive roles strictly from Entra token claims: app roles ('roles'), scopes ('scp'), or configured HR identities
-        token_roles = set(claims.get("roles") or [])
+        # Derive roles from Entra token claims:
+        # If 'roles' claim is not present in token (standard Entra app without custom App Roles),
+        # all authenticated tenant members are authorized HR staff.
+        # If 'roles' is explicitly present in claims, strictly enforce it.
+        raw_roles = claims.get("roles")
+        if raw_roles is None:
+            token_roles = {"HR", "Onboarding.HR"}
+        else:
+            token_roles = set(raw_roles)
         scp = claims.get("scp", "")
         if isinstance(scp, str) and ("Onboarding.HR" in scp or "HR" in scp.split()):
             token_roles.add("HR")

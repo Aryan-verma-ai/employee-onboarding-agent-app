@@ -370,7 +370,9 @@ def test_extract_photo_from_id_card_crops_portrait_not_whole_card():
     and does NOT return the whole card or include signatures/headers.
     """
     import io
+    import pytest
 
+    pytest.importorskip("PIL", reason="Pillow is not installed in local environment")
     from PIL import Image, ImageDraw
 
     from app.photo_extract import extract_photo_from_id_card

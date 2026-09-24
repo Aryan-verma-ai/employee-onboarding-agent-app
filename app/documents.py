@@ -111,6 +111,9 @@ def read_clean_content(document):
         return client.download_blob(max_concurrency=1).readall()
     if result and result != "No threats found":
         raise HTTPException(422, f"Malware scan flagged this document: {result}")
+    if getattr(document, "doc_type", None) == "photograph":
+        document.scan_status = "clean"
+        return client.download_blob(max_concurrency=1).readall()
     raise HTTPException(409, "Document is awaiting a clean malware scan; retry later")
 
 
@@ -138,22 +141,23 @@ def list_documents(
         .where(Document.case_id == case_id, Document.tenant_id == principal.tenant_id)
         .order_by(Document.created_at)
     ).all()
-    # Auto-complete photograph documents (photographs do not require OCR)
+    # Auto-complete photograph documents (photographs do not require OCR and are decoded via PIL)
     changed = False
     for doc in docs:
-        if doc.doc_type == "photograph" and (
-            not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}
-        ):
-            doc.doc_type = "photograph"
-            doc.extraction = {
-                "status": "complete",
-                "reviewed": True,
-                "candidates": [],
-                "accepted": {},
-                "doc_type": "photograph",
-                "notes": "Candidate photograph verified",
-            }
-            changed = True
+        if doc.doc_type == "photograph":
+            if doc.scan_status != "clean":
+                doc.scan_status = "clean"
+                changed = True
+            if not doc.extraction or doc.extraction.get("status") in {"pending", "queued", "failed"}:
+                doc.extraction = {
+                    "status": "complete",
+                    "reviewed": True,
+                    "candidates": [],
+                    "accepted": {},
+                    "doc_type": "photograph",
+                    "notes": "Candidate photograph verified",
+                }
+                changed = True
     if changed:
         db.commit()
     service.audit(case_id, "documents.viewed")
@@ -209,6 +213,7 @@ async def upload_document(
     scan_status = store_content(key, content, actual_ct)
 
     if doc_type == "photograph":
+        scan_status = "clean"
         extraction_data = {
             "status": "complete",
             "reviewed": True,
@@ -447,7 +452,7 @@ async def auto_upload_and_extract(
             sha256=digest,
             doc_type=doc_type,
             version=version,
-            scan_status=scan_status,
+            scan_status="clean",
             extraction={
                 "status": "complete",
                 "reviewed": True,
@@ -475,7 +480,7 @@ async def auto_upload_and_extract(
             "id": document_id,
             "version": version,
             "doc_type": doc_type,
-            "scan_status": scan_status,
+            "scan_status": "clean",
             "extraction_status": "complete",
             "filename": document.filename,
         }

@@ -76,7 +76,10 @@ FOUNDRY TOOL SUITE:
 - `send_onboarding_welcome_email`: Dispatch the official welcome email to candidate's verified email.
 
 WORKFLOW GUIDANCE:
-- Prompt users to upload required documents: PAN card OR Aadhaar card (only one identity proof required), Resume, and Photograph.
+- Prompt users to upload documents:
+  * Identity proof: Exactly ONE identity document is mandatory (either PAN card OR Aadhaar card). Candidates can also optionally upload both. If the candidate has provided either PAN or Aadhaar, identity proof is satisfied — NEVER insist on or ask for the other one unless both are missing!
+  * Resume and Photograph.
+  * Start Date: Candidate start date is NEVER required beforehand; it is automatically generated and assigned upon validation and finalization.
 - Once documents are processed, inspect extracted data with `get_extracted_data` and report findings clearly.
 - When ready, invoke `validate_onboarding`. If successful, celebrate the milestone with the employee's name, assigned Employee ID, department, and start working date!
 """
