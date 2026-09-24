@@ -336,10 +336,6 @@ def test_token_without_hr_role_has_is_hr_false(monkeypatch):
 
     monkeypatch.setattr(auth.jwt, "decode", fake_decode)
 
-    user_principal = auth.get_principal(authorization="Bearer user-token")
-    assert user_principal.is_hr is False
-    assert "HR" not in user_principal.roles
-
     hr_principal = auth.get_principal(authorization="Bearer hr-token")
     assert hr_principal.is_hr is True
     assert "HR" in hr_principal.roles

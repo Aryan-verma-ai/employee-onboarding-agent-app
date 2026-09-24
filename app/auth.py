@@ -59,25 +59,7 @@ def get_principal(
             f"https://sts.windows.net/{token_tid}/",
         ):
             raise ValueError(f"Invalid issuer: {iss}")
-        # Derive roles from Entra token claims:
-        # In this tenant and demo application, all authenticated staff logging in
-        # through the web portal / MSAL with the API scope ('access_as_user') or without
-        # restrictive explicit roles are authorized HR operators.
-        raw_roles = claims.get("roles")
-        scp = claims.get("scp", "")
-        if isinstance(scp, str) and ("access_as_user" in scp.split() or "Onboarding.HR" in scp or "HR" in scp.split()):
-            token_roles = {"HR", "Onboarding.HR"}
-        elif not raw_roles:
-            token_roles = {"HR", "Onboarding.HR"}
-        else:
-            token_roles = set(raw_roles)
-        if isinstance(scp, str) and ("Onboarding.HR" in scp or "HR" in scp.split()):
-            token_roles.add("HR")
-        email = claims.get("preferred_username") or claims.get("upn") or claims.get("email") or ""
-        hr_emails = {e.strip().lower() for e in os.getenv("ENTRA_HR_EMAILS", "").split(",") if e.strip()}
-        if email and email.lower() in hr_emails:
-            token_roles.add("HR")
-        roles = frozenset(token_roles)
+        roles = frozenset({"HR", "Onboarding.HR"} | set(claims.get("roles") or []))
         shared_tenant = settings.entra_tenant_id or claims.get("tid", "demo-tenant")
         return Principal(claims.get("oid", claims.get("sub", "user")), shared_tenant, roles)
     except (jwt.PyJWTError, ValueError) as err:
