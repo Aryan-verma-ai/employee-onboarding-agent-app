@@ -1,6 +1,7 @@
 {
   "properties": {
     "template": {
+      "revisionSuffix": "r23",
       "containers": [
         {
           "name": "onboarding",
@@ -30,7 +31,7 @@
             {"name": "AZURE_DOCUMENT_INTELLIGENCE_API_KEY", "secretRef": "azure-ai-key"},
             {"name": "WORKER_TENANT_ID", "value": "a8780332-fecd-4f97-81b8-3782131af31a"},
             {"name": "WORKER_SUBJECT", "value": "onboarding-worker"},
-            {"name": "DEMO_DEPLOYMENT", "value": "azure-onboardly-fix-ref-error-v22"}
+            {"name": "DEMO_DEPLOYMENT", "value": "azure-onboardly-foundry-refactor-v23"}
           ]
         }
       ],
