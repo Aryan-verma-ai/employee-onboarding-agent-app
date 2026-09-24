@@ -179,6 +179,11 @@ class OnboardingService:
             "dob": case.data.get("dob") or None,
             "has_pan": bool(case.data.get("pan")),
             "has_aadhaar": bool(case.data.get("aadhaar")),
+            "has_photograph": bool(case.data.get("has_photograph")),
+            "photo_source": case.data.get("photo_auto_extracted_from")
+            or ("user_uploaded" if case.data.get("has_photograph") else None),
+            "photo_filename": case.data.get("photo_filename"),
+            "photograph_document_id": case.data.get("photograph_document_id"),
         }
 
         doc_summaries = []

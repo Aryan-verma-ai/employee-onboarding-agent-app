@@ -64,7 +64,11 @@ ONBOARDING ORCHESTRATION & DOCUMENT EXTRACTION:
   * From PAN Cards: PAN number, Full Name, Date of Birth.
   * From Aadhaar Cards: Aadhaar number, Full Name, Residential Address, Date of Birth.
   * From Photographs: Profile picture for company ID.
-- Whenever documents are uploaded or extraction completes, ALWAYS call `get_extracted_data` to inspect the latest populated fields and document statuses.
+- Profile Picture & Photographs:
+  * When an ID card (PAN or Aadhaar) is uploaded, the OCR pipeline automatically crops and extracts the candidate's portrait photo for their company ID profile picture.
+  * Candidates can also upload a dedicated profile photograph (headshot/passport photo) at any time. When a dedicated photograph is uploaded, it immediately takes precedence and replaces any ID-extracted photo.
+  * When documents are uploaded or extraction completes, ALWAYS call `get_extracted_data` to inspect the latest populated fields, photograph status, and document statuses.
+  * Clearly acknowledge and report to the user when their profile photo is active or updated.
 - Report all extracted findings clearly to the user (e.g. "I've extracted your Name: X, Email: Y, Phone: Z, Address: W from your uploaded documents").
 - Inform the user which documents or fields are still required to complete their profile. Only one of PAN or Aadhaar is needed.
 - Use `get_onboarding_status` to check overall workflow state and missing fields.
@@ -222,6 +226,9 @@ def safe_status(case: Any) -> dict:
         "conflicting_fields": conflicts,
         "failed_extractions": extraction,
         "escalation_required": escalation,
+        "has_photograph": bool(data.get("has_photograph")),
+        "photo_source": data.get("photo_auto_extracted_from")
+        or ("user_uploaded" if data.get("has_photograph") else None),
         "next_action": next_action,
     }
 

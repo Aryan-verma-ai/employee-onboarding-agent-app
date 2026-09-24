@@ -2247,16 +2247,27 @@
             'other': '📁 Document'
         };
         
-        let hasPhoto = false;
+        const photoDocs = docs.filter(d => d.doc_type === 'photograph');
         let photoDocId = null;
+        if (photoDocs.length > 0) {
+            const designatedId = currentCaseData && currentCaseData.photograph_document_id;
+            const designatedDoc = designatedId ? photoDocs.find(d => d.id === designatedId) : null;
+            
+            // User-uploaded photographs always take precedence over auto-extracted ID card crops
+            const userUploadedPhotos = photoDocs.filter(d => 
+                !(d.filename && d.filename.startsWith('auto_extracted_photo_'))
+            );
+            
+            if (userUploadedPhotos.length > 0) {
+                photoDocId = userUploadedPhotos[userUploadedPhotos.length - 1].id;
+            } else if (designatedDoc) {
+                photoDocId = designatedDoc.id;
+            } else {
+                photoDocId = photoDocs[photoDocs.length - 1].id;
+            }
+        }
         
         docs.forEach(d => {
-            const isPhoto = d.doc_type === 'photograph';
-            if (isPhoto && !hasPhoto) {
-                hasPhoto = true;
-                photoDocId = d.id;
-            }
-
             const item = document.createElement('div');
             item.className = 'doc-card';
             
@@ -2281,7 +2292,7 @@
             docList.appendChild(item);
         });
 
-        if (hasPhoto && photoDocId) {
+        if (photoDocId) {
             loadProfilePhoto(photoDocId);
         } else {
             const img = document.getElementById('profile-photo-img');
@@ -2332,9 +2343,9 @@
     let _currentPhotoBlobUrl = null;
     let _loadedPhotoDocId = null;
 
-    async function loadProfilePhoto(docId) {
+    async function loadProfilePhoto(docId, forceReload = false) {
         if (!docId || !currentCaseId) return;
-        if (_loadedPhotoDocId === docId && _currentPhotoBlobUrl) {
+        if (!forceReload && _loadedPhotoDocId === docId && _currentPhotoBlobUrl) {
             const img = document.getElementById('profile-photo-img');
             const placeholder = document.getElementById('profile-photo-placeholder');
             if (img) {
@@ -2706,8 +2717,9 @@ Human Resources & Employee Onboarding Team`;
                     });
                     
                     if (uploadRes && uploadRes.doc_type === 'photograph') {
-                        addSystemMessage(`📷 Photograph uploaded: ${file.name} — profile picture verified!`);
+                        addSystemMessage(`📷 Photograph uploaded: ${file.name} — profile picture updated & verified!`);
                         showToast("Photograph verified & profile picture active!", 'success');
+                        await loadProfilePhoto(uploadRes.id, true);
                     } else {
                         addSystemMessage(`📄 Uploaded: ${file.name} — OCR processing started...`);
                     }

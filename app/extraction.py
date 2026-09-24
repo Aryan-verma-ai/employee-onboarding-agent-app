@@ -401,16 +401,49 @@ def classify_document(candidates: list[dict], filename: str = "", content_type: 
     if "email" in fields_found or "phone" in fields_found:
         return "resume"
 
-    # 4. Only classify as photograph if filename explicitly indicates a profile headshot/avatar
+    # 4. Classify as photograph if filename explicitly indicates a profile headshot/avatar/photo
     if any(
         k in fn_lower
-        for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "avatar", "profile_photo")
+        for k in (
+            "headshot",
+            "passport_photo",
+            "profile_pic",
+            "candidate_photo",
+            "avatar",
+            "profile_photo",
+            "photo",
+            "photograph",
+            "portrait",
+            "profile",
+            "picture",
+            "pic",
+            "selfie",
+            "dp",
+        )
+    ) and not any(
+        k in fn_lower
+        for k in ("pan", "aadhaar", "aadhar", "card", "id_card", "idcard", "id_proof", "identity", "doc")
     ):
         return "photograph"
 
     # 5. Image file with zero text candidates (i.e. pure photo with no document text)
     if ct_lower.startswith("image/") and not candidates:
-        if not any(k in fn_lower for k in ("pan", "aadhaar", "aadhar", "card", "id", "doc")):
+        if not any(
+            k in fn_lower
+            for k in (
+                "pan",
+                "aadhaar",
+                "aadhar",
+                "card",
+                "id_card",
+                "idcard",
+                "id_proof",
+                "identity",
+                "doc",
+                "bill",
+                "cert",
+            )
+        ):
             return "photograph"
 
     return "other"

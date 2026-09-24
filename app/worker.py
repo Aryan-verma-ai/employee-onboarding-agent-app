@@ -116,6 +116,14 @@ def process_one(bind, principal, reader=None, extractor=None, now=None):
             )
             if detected_type != "other" or document.doc_type == "other":
                 document.doc_type = detected_type
+                if detected_type == "photograph":
+                    case_data = dict(case.data or {})
+                    case_data["has_photograph"] = True
+                    case_data["photograph_document_id"] = document.id
+                    case_data["photo_is_user_uploaded"] = True
+                    case_data["photo_filename"] = document.filename
+                    case_data.pop("photo_auto_extracted_from", None)
+                    case.data = case_data
                 service.audit(
                     case_id,
                     "document.auto_classified",
@@ -194,6 +202,13 @@ def _try_auto_extract_photo(db, principal, service, case, document):
 
     case_id = case.id
 
+    # Skip if a user-uploaded photograph already exists for this case
+    if case.data and case.data.get("photo_is_user_uploaded"):
+        logging.getLogger(__name__).debug(
+            "User-uploaded photo already exists for case %s — skipping auto-extract", case_id
+        )
+        return
+
     # Skip if a photograph already exists for this case
     existing_photo = db.scalar(
         select(DocModel).where(
@@ -271,6 +286,7 @@ def _try_auto_extract_photo(db, principal, service, case, document):
     case_data["has_photograph"] = True
     case_data["photograph_document_id"] = photo_id
     case_data["photo_auto_extracted_from"] = document.doc_type
+    case_data["photo_filename"] = photo_doc.filename
     case.data = case_data
 
     service.audit(

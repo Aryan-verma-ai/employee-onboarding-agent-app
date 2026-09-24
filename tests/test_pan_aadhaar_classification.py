@@ -362,3 +362,139 @@ async def test_photo_upload_allowed_on_completed_case(tmp_path, monkeypatch):
         assert db_emp.data["pan"] == "ABCDE1234F"
         assert db_emp.data["address"] == "456 Silicon Valley Boulevard, Bengaluru"
         assert db_emp.pan_fingerprint == hashlib.sha256(b"ABCDE1234F").hexdigest()
+
+
+def test_extract_photo_from_id_card_crops_portrait_not_whole_card():
+    """Verify that portrait extraction from an ID card crops only the portrait photo,
+
+    and does NOT return the whole card or include signatures/headers.
+    """
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from app.photo_extract import extract_photo_from_id_card
+
+    # Create mock PAN card (850 x 540)
+    img = Image.new("RGB", (850, 540), color=(240, 248, 255))
+    draw = ImageDraw.Draw(img)
+    # Header banner
+    draw.rectangle([(0, 0), (850, 80)], fill=(70, 130, 180))
+    # Photo frame in upper left (x: 50..270, y: 110..350)
+    draw.rectangle([(50, 110), (270, 350)], fill=(220, 220, 220))
+    # Face inside photo (x: 100..220, y: 140..280) with skin tones
+    draw.ellipse([(100, 140), (220, 280)], fill=(210, 160, 120))
+    # Hair
+    draw.rectangle([(100, 130), (220, 165)], fill=(30, 20, 10))
+    # Signature box at bottom (x: 50..270, y: 390..470)
+    draw.rectangle([(50, 390), (270, 470)], fill=(255, 255, 255))
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    card_bytes = buf.getvalue()
+
+    result = extract_photo_from_id_card(card_bytes)
+    assert result is not None, "Expected portrait photo to be extracted"
+    photo_bytes, ct = result
+    assert ct == "image/jpeg"
+
+    # Inspect cropped image dimensions
+    cropped_img = Image.open(io.BytesIO(photo_bytes))
+    cw, ch = cropped_img.size
+    # Must be a portrait/square image, and must NOT be the whole card!
+    assert cw < 850
+    assert ch < 540
+    # Must be between 0.8 and 1.8 aspect ratio
+    assert 0.75 <= (ch / cw) <= 1.8
+    # Height must be strictly smaller than the card height
+    assert ch <= 400
+
+
+@pytest.mark.anyio
+async def test_proper_profile_photo_takes_precedence_over_id_extracted_photo(tmp_path, monkeypatch):
+    """Verify that when a proper profile photo is uploaded, it takes precedence
+
+    over any auto-extracted ID card photo.
+    """
+    import io
+
+    from fastapi import BackgroundTasks, UploadFile
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.auth import Principal
+    from app.documents import auto_upload_and_extract, get_case_photo
+    from app.models import Base, Case, Document, utcnow
+
+    monkeypatch.setattr("app.documents.store_content", lambda key, content, content_type: "clean")
+    monkeypatch.setattr(
+        "app.documents.read_clean_content", lambda doc: b"fake-photo-content-" + doc.id.encode()
+    )
+
+    engine = create_engine("sqlite:///" + str(tmp_path / "precedence.db"))
+    Base.metadata.create_all(engine)
+    principal = Principal("hr-user", "tenant-1", frozenset({"HR"}))
+
+    with Session(engine) as db:
+        case = Case(
+            tenant_id="tenant-1",
+            owner_id="hr-user",
+            department="engineering",
+            consent_at=utcnow(),
+            status="needs-information",
+            data={},
+        )
+        db.add(case)
+        db.flush()
+
+        # 1. Simulate an auto-extracted photo from PAN card
+        auto_photo = Document(
+            case_id=case.id,
+            tenant_id="tenant-1",
+            filename="auto_extracted_photo_pan.jpg",
+            content_type="image/jpeg",
+            storage_key="test/auto_photo",
+            sha256="a" * 64,
+            scan_status="clean",
+            doc_type="photograph",
+        )
+        db.add(auto_photo)
+        db.flush()
+
+        case.data = {
+            "has_photograph": True,
+            "photograph_document_id": auto_photo.id,
+            "photo_auto_extracted_from": "pan",
+            "photo_filename": auto_photo.filename,
+        }
+        db.commit()
+        case_id = case.id
+        auto_photo_id = auto_photo.id
+
+    # Verify initial photo is the auto-extracted one
+    with Session(engine) as db:
+        photo_resp = get_case_photo(case_id, db=db, principal=principal)
+        assert photo_resp.body == b"fake-photo-content-" + auto_photo_id.encode()
+
+    # 2. Candidate uploads a dedicated proper profile photo (e.g. headshot.jpg)
+    photo_file = UploadFile(
+        filename="profile_photo.jpg",
+        file=io.BytesIO(b"\xff\xd8\xff\xe0" + b"x" * 200),
+        headers={"content-type": "image/jpeg"},
+    )
+    with Session(engine) as db:
+        bg = BackgroundTasks()
+        res = await auto_upload_and_extract(case_id, bg, photo_file, db=db, principal=principal)
+        assert res["doc_type"] == "photograph"
+        proper_photo_id = res["id"]
+
+        # Case data must now point to the proper user-uploaded photo!
+        updated_case = db.get(Case, case_id)
+        assert updated_case.data.get("photograph_document_id") == proper_photo_id
+        assert updated_case.data.get("photo_is_user_uploaded") is True
+        assert "photo_auto_extracted_from" not in updated_case.data
+
+    # 3. get_case_photo must now return the proper user-uploaded photo!
+    with Session(engine) as db:
+        new_photo_resp = get_case_photo(case_id, db=db, principal=principal)
+        assert new_photo_resp.body == b"fake-photo-content-" + proper_photo_id.encode()

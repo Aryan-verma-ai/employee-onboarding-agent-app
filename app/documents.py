@@ -239,6 +239,9 @@ async def upload_document(
         case_data = dict(case.data or {})
         case_data["has_photograph"] = True
         case_data["photograph_document_id"] = document_id
+        case_data["photo_is_user_uploaded"] = True
+        case_data["photo_filename"] = document.filename
+        case_data.pop("photo_auto_extracted_from", None)
         case.data = case_data
     service.audit(
         case_id, "document.uploaded", {"document_id": document_id, "version": version, "doc_type": doc_type}
@@ -258,11 +261,27 @@ def get_case_photo(
 ):
     service = OnboardingService(db, principal)
     case = service.get_case(case_id)
-    doc = db.scalar(
-        select(Document)
-        .where(Document.case_id == case.id, Document.doc_type == "photograph")
-        .order_by(Document.created_at.desc())
-    )
+
+    doc = None
+    if case.data and case.data.get("photograph_document_id"):
+        doc = db.get(Document, case.data["photograph_document_id"])
+        if doc and doc.case_id != case.id:
+            doc = None
+
+    if not doc:
+        docs = db.scalars(
+            select(Document)
+            .where(Document.case_id == case.id, Document.doc_type == "photograph")
+            .order_by(Document.created_at.desc())
+        ).all()
+        # Prefer user-uploaded photographs over auto-extracted ones
+        for d in docs:
+            if not (d.filename or "").startswith("auto_extracted_photo_"):
+                doc = d
+                break
+        if not doc and docs:
+            doc = docs[0]
+
     if not doc:
         raise HTTPException(404, "No photograph found for this case")
     content = read_clean_content(doc)
@@ -364,19 +383,42 @@ async def auto_upload_and_extract(
         }
 
     # Initial type hint
+    is_photo_kw = any(
+        k in fn_lower
+        for k in (
+            "photo",
+            "photograph",
+            "headshot",
+            "portrait",
+            "profile",
+            "avatar",
+            "face",
+            "picture",
+            "pic",
+            "selfie",
+            "passport_photo",
+            "dp",
+        )
+    )
+    is_id_kw = any(
+        k in fn_lower for k in ("pan", "pancard", "aadhaar", "aadhar", "card", "id_card", "identity", "govt")
+    )
+    is_doc_kw = any(k in fn_lower for k in ("resume", "cv", "curriculum", "marksheet", "certificate"))
+
     if any(k in fn_lower for k in ("pan", "pancard")):
         doc_type = "pan"
     elif any(k in fn_lower for k in ("aadhaar", "aadhar")):
         doc_type = "aadhaar"
-    elif any(k in fn_lower for k in ("resume", "cv")):
+    elif any(k in fn_lower for k in ("resume", "cv", "curriculum")):
         doc_type = "resume"
-    elif any(
-        k in fn_lower
-        for k in ("headshot", "passport_photo", "profile_pic", "candidate_photo", "profile_photo", "avatar")
-    ) or (
-        case.status == "created"
-        and actual_ct.startswith("image/")
-        and not any(k in fn_lower for k in ("pan", "aadhaar", "aadhar", "card", "id_card", "identity"))
+    elif (is_photo_kw and not is_id_kw and not is_doc_kw) or (
+        actual_ct.startswith("image/")
+        and not is_id_kw
+        and not is_doc_kw
+        and (
+            case.status == "created"
+            or any(k in fn_lower for k in ("photo", "profile", "headshot", "pic", "portrait", "avatar", "me"))
+        )
     ):
         doc_type = "photograph"
     else:
@@ -420,6 +462,9 @@ async def auto_upload_and_extract(
         case_data = dict(case.data or {})
         case_data["has_photograph"] = True
         case_data["photograph_document_id"] = document_id
+        case_data["photo_is_user_uploaded"] = True
+        case_data["photo_filename"] = document.filename
+        case_data.pop("photo_auto_extracted_from", None)
         case.data = case_data
         service.audit(
             case_id, "document.photo_uploaded", {"document_id": document_id, "filename": document.filename}

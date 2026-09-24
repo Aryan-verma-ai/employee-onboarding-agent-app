@@ -27,68 +27,103 @@ def _has_skin_tones(img, threshold: float = 0.08) -> bool:
     """Rough check whether image contains enough skin-tone-ish pixels (works across skin colours)."""
     try:
         small = img.resize((80, 80)).convert("RGB")
-        pixels = list(small.getdata())
+        raw = small.tobytes()
+        total_pixels = len(raw) // 3
         skin_count = 0
-        for r, g, b in pixels:
-            # Broad skin-tone heuristic covering light to dark skin
-            if r > 60 and g > 40 and b > 20:
-                if abs(r - g) < 80 and r > b:
-                    skin_count += 1
-        return (skin_count / len(pixels)) > threshold
+        for i in range(0, len(raw), 3):
+            r, g, b = raw[i], raw[i + 1], raw[i + 2]
+            if r > 60 and g > 40 and b > 20 and abs(r - g) < 80 and r > b:
+                skin_count += 1
+        return (skin_count / total_pixels) > threshold
     except Exception:
         return False
 
 
+def _is_skin_pixel(r: int, g: int, b: int) -> bool:
+    """Check if RGB values match human skin-tone range across all skin colours."""
+    return r > 60 and g > 40 and b > 20 and abs(r - g) < 80 and r > b and (r - g) > 5
+
+
 def _find_face_region_from_image(img) -> Optional[tuple]:
-    """Find the face region in an ID card image using colour-based segmentation.
+    """Find the portrait photo region in an ID card image.
 
-    PAN/Aadhaar cards have a standard layout: photo is typically on the left or
-    right side, taking up about 25-35% of the card width.
-    We try candidate regions and pick the one with the most skin-tone pixels.
+    PAN and Aadhaar cards have a standardized layout:
+    - The portrait photo is located in the upper-left quadrant (below the top header banner,
+      above the bottom signature/UID band, and to the left of the name/text fields).
+    - It takes up roughly 25-32% of card width and 40-48% of card height.
+    - We use skin-tone pixel clustering to locate the candidate's actual headshot and crop
+      with portrait margins (hair, face, shoulders).
+    - Fallback: A standard ID photo frame is used if the photo is monochrome/grayscale,
+      ensuring we NEVER crop the entire card or include signatures/headers.
     """
-
     w, h = img.size
+    is_landscape = w >= h
 
-    # Standard ID card photo positions (as fraction of card dimensions)
-    # PAN: photo is on the left side, roughly 25-35% from left edge
-    # Aadhaar: photo is on the left side too
-    candidate_regions = [
-        # Left side portrait region (PAN/Aadhaar typical)
-        (0, int(h * 0.15), int(w * 0.35), int(h * 0.95)),
-        # Slightly inset left
-        (int(w * 0.02), int(h * 0.20), int(w * 0.32), int(h * 0.90)),
-        # Right side (some card layouts)
-        (int(w * 0.65), int(h * 0.15), w, int(h * 0.95)),
-        # Center-left
-        (int(w * 0.05), int(h * 0.10), int(w * 0.40), int(h * 0.85)),
-        # Wider left region
-        (0, int(h * 0.05), int(w * 0.42), h),
-    ]
+    zones = []
+    if is_landscape:
+        # Standard PAN/Aadhaar photo is strictly in the upper-left quadrant
+        # (below header, above signature/footer, left of text fields)
+        zones.append((int(w * 0.03), int(h * 0.14), int(w * 0.40), int(h * 0.68)))
+        # Right quadrant for cards with photo on the right side
+        zones.append((int(w * 0.60), int(h * 0.14), int(w * 0.97), int(h * 0.68)))
+    else:
+        # Vertical image / smartphone photo of card
+        zones.append((int(w * 0.05), int(h * 0.15), int(w * 0.55), int(h * 0.65)))
+        zones.append((int(w * 0.10), int(h * 0.08), int(w * 0.90), int(h * 0.50)))
 
-    best_region = None
-    best_score = 0
+    # Pass 1: Skin-tone cluster detection (crops strictly around headshot/portrait)
+    for zx1, zy1, zx2, zy2 in zones:
+        zone = img.crop((zx1, zy1, zx2, zy2))
+        zw, zh = zone.size
+        skin_pts = []
+        for y in range(0, zh, 2):
+            for x in range(0, zw, 2):
+                p = zone.getpixel((x, y))
+                if _is_skin_pixel(p[0], p[1], p[2]):
+                    skin_pts.append((x, y))
 
-    for x1, y1, x2, y2 in candidate_regions:
-        region = img.crop((x1, y1, x2, y2))
-        rw, rh = region.size
-        if rw < 30 or rh < 30:
-            continue
+        if len(skin_pts) >= 30:
+            xs = sorted(p[0] for p in skin_pts)
+            ys = sorted(p[1] for p in skin_pts)
+            n = len(xs)
+            min_x, max_x = xs[int(n * 0.05)], xs[int(n * 0.95)]
+            min_y, max_y = ys[int(n * 0.05)], ys[int(n * 0.95)]
 
-        if not _is_portrait_ratio(rw, rh):
-            continue
+            fw = max_x - min_x
+            fh = max_y - min_y
+            if fw >= 20 and fh >= 20:
+                pad_top = int(fh * 0.40)
+                pad_bot = int(fh * 0.45)
+                pad_side = int(fw * 0.35)
 
-        # Score by skin-tone density
-        small = region.resize((60, 60)).convert("RGB")
-        pixels = list(small.getdata())
-        skin_count = sum(
-            1 for r, g, b in pixels if r > 60 and g > 40 and b > 20 and abs(r - g) < 80 and r > b
+                crop_x1 = max(0, min_x - pad_side)
+                crop_y1 = max(0, min_y - pad_top)
+                crop_x2 = min(zw, max_x + pad_side)
+                crop_y2 = min(zh, max_y + pad_bot)
+
+                cw = crop_x2 - crop_x1
+                ch = crop_y2 - crop_y1
+                if cw > 30 and ch > 30 and 0.75 <= (ch / cw) <= 1.8:
+                    return (zx1 + crop_x1, zy1 + crop_y1, zx1 + crop_x2, zy1 + crop_y2)
+
+    # Pass 2: Fallback to standard photo frame for monochrome/grayscale ID photos
+    if is_landscape:
+        # Standard ID photo frame: strictly 27% width, 44% height (never the full card!)
+        frame_x1, frame_y1, frame_x2, frame_y2 = (
+            int(w * 0.05),
+            int(h * 0.18),
+            int(w * 0.32),
+            int(h * 0.62),
         )
-        score = skin_count / len(pixels)
-        if score > best_score and score > 0.05:
-            best_score = score
-            best_region = (x1, y1, x2, y2)
+        sample = img.crop((frame_x1, frame_y1, frame_x2, frame_y2)).convert("L")
+        pixels = list(sample.tobytes())
+        mean = sum(pixels) / len(pixels)
+        variance = sum((p - mean) ** 2 for p in pixels) / len(pixels)
+        std_dev = variance**0.5
+        if std_dev > 15:  # Non-trivial portrait content (not blank white/plain background)
+            return (frame_x1, frame_y1, frame_x2, frame_y2)
 
-    return best_region
+    return None
 
 
 def extract_photo_from_id_card(content: bytes) -> Optional[tuple[bytes, str]]:
